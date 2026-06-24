@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="24" fill="#2962ff"/>
+  <!-- tela / Chromebook -->
+  <rect x="28" y="34" width="72" height="48" rx="6" fill="#fff"/>
+  <rect x="20" y="86" width="88" height="8" rx="4" fill="#bbdefb"/>
+  <!-- seta de "enviar para a tela" -->
+  <path d="M52 58 h16 v-9 l16 14 -16 14 v-9 h-16 z" fill="#2962ff"/>
+</svg>

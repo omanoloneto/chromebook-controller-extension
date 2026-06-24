@@ -1,0 +1,65 @@
+/* Estilo do popup — provisório, apenas para o esqueleto. */
+:root {
+  --cor-principal: #2962ff;
+  --cor-ok: #00897b;
+  --cor-texto: #1a1a1a;
+}
+
+body {
+  width: 320px;
+  margin: 0;
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  color: var(--cor-texto);
+}
+
+header {
+  padding: 12px 16px;
+  background: var(--cor-principal);
+  color: #fff;
+}
+
+header h1 {
+  font-size: 16px;
+  margin: 0;
+}
+
+.status {
+  margin: 4px 0 0;
+  font-size: 12px;
+  opacity: 0.9;
+}
+
+main {
+  padding: 16px;
+}
+
+.qr {
+  display: grid;
+  place-items: center;
+  min-height: 200px;
+  background: #f2f2f2;
+  border-radius: 8px;
+}
+
+video {
+  width: 100%;
+  border-radius: 8px;
+  background: #000;
+}
+
+button {
+  width: 100%;
+  margin-top: 12px;
+  padding: 10px;
+  font-size: 14px;
+  color: #fff;
+  background: var(--cor-principal);
+  border: 0;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+footer {
+  padding: 8px 16px 16px;
+  color: #666;
+}

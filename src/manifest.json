@@ -1,0 +1,22 @@
+{
+  "manifest_version": 3,
+  "name": "Controle de Aula — Chromebook",
+  "description": "Recebe comandos do celular do professor (pela rede local) e controla o Chromebook. Função inicial: abrir URL/aba.",
+  "version": "0.1.0",
+  "default_locale": "pt_BR",
+  "icons": {
+    "16": "icons/icon-16.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "action": {
+    "default_title": "Controle de Aula",
+    "default_popup": "popup/popup.html"
+  },
+  "background": {
+    "service_worker": "background/service-worker.js",
+    "type": "module"
+  },
+  "permissions": ["tabs", "storage"],
+  "minimum_chrome_version": "116"
+}

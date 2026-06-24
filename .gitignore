@@ -1,0 +1,23 @@
+# Dependências (caso seja adicionado build no futuro)
+node_modules/
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Build / empacotamento da extensão
+dist/
+build/
+*.zip
+*.crx
+*.pem
+
+# Ambiente
+.env
+.env.*
+
+# Sistema operacional / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log

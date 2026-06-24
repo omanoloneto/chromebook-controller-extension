@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle de Aula</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <header>
+      <h1>Controle de Aula</h1>
+      <p class="status" id="status">Não pareado</p>
+    </header>
+
+    <main>
+      <!-- Etapa 1: mostrar o QR do offer (QR #1) -->
+      <section id="etapa-offer" hidden>
+        <p>Escaneie este código com o app no celular:</p>
+        <div id="qr-offer" class="qr"><!-- QR #1 renderizado aqui --></div>
+      </section>
+
+      <!-- Etapa 2: ler o QR do answer (QR #2) com a câmera -->
+      <section id="etapa-answer" hidden>
+        <p>Agora aponte a câmera para o QR do celular:</p>
+        <video id="camera" autoplay playsinline></video>
+      </section>
+
+      <button id="btn-parear">Parear</button>
+    </main>
+
+    <footer>
+      <small>Função inicial: abrir URL/aba enviada pelo celular.</small>
+    </footer>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
