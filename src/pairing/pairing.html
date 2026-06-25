@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Controle de Aula — Pareamento</title>
+    <link rel="stylesheet" href="pairing.css" />
+  </head>
+  <body>
+    <main class="cartao">
+      <h1>Parear com o celular</h1>
+      <p class="status" id="status">Preparando…</p>
+
+      <!-- Passo 1: QR do offer (QR #1) -->
+      <section id="etapa-offer" hidden>
+        <p class="passo">1. Escaneie este código com o app no celular:</p>
+        <div id="qr-offer" class="qr"></div>
+      </section>
+
+      <!-- Passo 2: ler o QR do answer (QR #2) com a câmera -->
+      <section id="etapa-answer" hidden>
+        <p class="passo">2. Aponte a câmera para o QR que apareceu no celular:</p>
+        <video id="camera" autoplay playsinline muted></video>
+      </section>
+
+      <!-- Conectado -->
+      <section id="etapa-ok" hidden>
+        <p class="ok">✅ Conectado ao celular!</p>
+        <p>Já pode fechar esta aba — a conexão continua ativa. Envie sites pelo app.</p>
+      </section>
+
+      <p class="erro" id="erro" hidden></p>
+
+      <button id="btn-fechar" hidden>Fechar</button>
+    </main>
+
+    <!-- Lib de geração de QR (clássica, define window.qrcode). -->
+    <script src="../lib/vendor/qrcode.js"></script>
+    <script type="module" src="pairing.js"></script>
+  </body>
+</html>

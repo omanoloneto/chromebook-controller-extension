@@ -42,7 +42,8 @@ de SDP/ICE). Resolvemos isso com **QR code** — ver
 |-------|-------|------------------|
 | **Offscreen document** | `src/offscreen/` | **Dono da `RTCPeerConnection` / `RTCDataChannel`** (papel *offerer*). Roda fora do service worker porque WebRTC não existe em service workers. Cria o offer, aceita o answer e recebe as mensagens do celular. |
 | **Service worker** | `src/background/` | Orquestra: cria/garante o offscreen, encaminha mensagens do popup, executa os comandos no navegador (`chrome.tabs`) e atualiza o ícone/status. |
-| **Popup** | `src/popup/` | Interface do professor: iniciar pareamento, mostrar o QR #1, **ler o QR #2 com a câmera** (`BarcodeDetector`) e mostrar o status. |
+| **Aba de pareamento** | `src/pairing/` | Mostra o QR #1 e **lê o QR #2 com a câmera** (`BarcodeDetector`). Roda numa aba (não no popup) porque a câmera não funciona em popup de extensão. |
+| **Popup** | `src/popup/` | Lançador: mostra o status e o botão **Parear** (que abre a aba de pareamento). |
 | **Biblioteca** | `src/lib/` | `signal.js` (codificação dos QR), `protocol.js` (mensagens do DataChannel), `ipc.js` (mensagens internas) e `vendor/qrcode.js` (geração de QR). |
 
 ### Por que um *offscreen document*?

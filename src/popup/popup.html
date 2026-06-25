@@ -13,35 +13,20 @@
     </header>
 
     <main>
-      <!-- Passo 1: mostrar o QR do offer (QR #1) -->
-      <section id="etapa-offer" hidden>
-        <p class="passo">1. Escaneie este código com o app no celular:</p>
-        <div id="qr-offer" class="qr"></div>
-      </section>
+      <p id="dica" class="passo">Conecte seu celular para enviar sites a esta tela.</p>
 
-      <!-- Passo 2: ler o QR do answer (QR #2) com a câmera -->
-      <section id="etapa-answer" hidden>
-        <p class="passo">2. Aponte a câmera para o QR que apareceu no celular:</p>
-        <video id="camera" autoplay playsinline muted></video>
+      <section id="conectado" hidden>
+        <p class="ok">✅ Conectado ao celular.</p>
       </section>
-
-      <!-- Conectado -->
-      <section id="etapa-ok" hidden>
-        <p class="ok">✅ Conectado ao celular. Já pode enviar sites pelo app.</p>
-      </section>
-
-      <p class="erro" id="erro" hidden></p>
 
       <button id="btn-parear">Parear</button>
       <button id="btn-encerrar" hidden>Encerrar conexão</button>
     </main>
 
     <footer>
-      <small>Função inicial: abrir URL/aba enviada pelo celular.</small>
+      <small>O pareamento abre em uma aba (a câmera não funciona no popup).</small>
     </footer>
 
-    <!-- Lib de geração de QR (clássica, define window.qrcode) carregada antes do módulo. -->
-    <script src="../lib/vendor/qrcode.js"></script>
     <script type="module" src="popup.js"></script>
   </body>
 </html>

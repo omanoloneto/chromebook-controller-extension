@@ -47,12 +47,17 @@ chromebook-controller-extension/
 │   ├── manifest.json          # Manifest V3
 │   ├── offscreen/            # documento que hospeda a RTCPeerConnection
 │   ├── background/          # service worker (orquestra + chrome.tabs)
-│   ├── popup/              # interface: mostra QR #1 e lê QR #2 (câmera)
-│   ├── lib/              # signal/protocol/ipc + vendor/qrcode.js
-│   └── icons/           # ícones da extensão
-├── docs/              # documentação (arquitetura, protocolo, instalação)
+│   ├── pairing/            # ABA de pareamento: gera QR #1 e lê QR #2 (câmera)
+│   ├── popup/             # lançador: status + botão "Parear"
+│   ├── lib/             # signal/protocol/ipc + vendor/qrcode.js
+│   └── icons/          # ícones da extensão
+├── docs/             # documentação (arquitetura, protocolo, instalação)
 └── README.md
 ```
+
+> **Por que o pareamento abre em uma aba?** A câmera (`getUserMedia`) não
+> funciona no popup de extensão — o prompt de permissão tira o foco e fecha o
+> popup. Numa aba normal funciona e a permissão fica salva.
 
 ## Instalação (desenvolvimento)
 
