@@ -8,9 +8,13 @@ import { MessageType } from '../lib/protocol.js';
 
 let client = null;
 
-function broadcastState(connected) {
+function broadcastState(connected, detail) {
   chrome.runtime
-    .sendMessage({ cmd: IPC.STATE_CHANGED, state: connected ? 'connected' : 'disconnected' })
+    .sendMessage({
+      cmd: IPC.STATE_CHANGED,
+      state: connected ? 'connected' : 'disconnected',
+      detail: detail ?? null,
+    })
     .catch(() => {});
 }
 
@@ -28,7 +32,11 @@ async function executarComando(cmd) {
 
 async function startClient() {
   const data = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
-  if (!data?.ip || !data?.port || !data?.key) return; // ainda não pareado
+  if (!data?.ip || !data?.port || !data?.key) {
+    console.warn('[CdA] offscreen: sem pareamento no storage ainda.');
+    return;
+  }
+  console.log('[CdA] offscreen: iniciando cliente para', `${data.ip}:${data.port}`);
   client?.stop();
   client = new CommandClient({
     ip: data.ip,

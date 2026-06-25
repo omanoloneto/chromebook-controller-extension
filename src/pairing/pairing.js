@@ -20,6 +20,7 @@ let stream = null;
 let detector = null;
 let scanning = false;
 let creds = null; // { ip, port, key, name }
+let tentando = false; // true depois que o usuário clica "Conectar"
 
 function mostrarErro(t) {
   el.erro.textContent = t;
@@ -95,6 +96,7 @@ el.btnConectar.addEventListener('click', async () => {
     if (!granted) throw new Error('Permissão de rede local negada.');
 
     setStatus('Conectando…');
+    tentando = true;
     const res = await chrome.runtime.sendMessage({
       cmd: IPC.PAIR_SAVE,
       ip: creds.ip,
@@ -114,11 +116,24 @@ el.btnConectar.addEventListener('click', async () => {
 el.btnFechar.addEventListener('click', () => window.close());
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.cmd === IPC.STATE_CHANGED && msg.state === 'connected') {
+  if (msg?.cmd !== IPC.STATE_CHANGED) return;
+  if (msg.state === 'connected') {
     el.etapaConfirmar.hidden = true;
     el.etapaOk.hidden = false;
     el.btnFechar.hidden = false;
+    mostrarErro('');
     setStatus('Conectado');
+  } else if (tentando) {
+    // ainda tentando conectar: mostra o motivo do último erro, se houver
+    setStatus('Tentando conectar ao celular…');
+    if (msg.detail) {
+      mostrarErro(
+        'Sem resposta do celular (' + msg.detail + '). ' +
+          'Confira: mesma Wi-Fi, app aberto, e teste abrir http://' +
+          (creds ? creds.ip + ':' + creds.port : '<ip>') +
+          '/ numa aba (deve responder "controle-de-aula").',
+      );
+    }
   }
 });
 
