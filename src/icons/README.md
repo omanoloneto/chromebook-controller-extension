@@ -1,7 +1,7 @@
 # Ícones da extensão
 
-`icon.svg` é o desenho-fonte. O Manifest V3 referencia versões **PNG** nos
-tamanhos abaixo (ainda **não geradas** — tarefa em aberto):
+`icon.svg` é o desenho-fonte. O Manifest V3 usa as versões **PNG** abaixo
+(já geradas e versionadas):
 
 | Arquivo | Tamanho |
 |---------|---------|
@@ -9,9 +9,9 @@ tamanhos abaixo (ainda **não geradas** — tarefa em aberto):
 | `icon-48.png` | 48×48 |
 | `icon-128.png` | 128×128 |
 
-## Como gerar (exemplo)
+## Como regenerar
 
-Com o [Inkscape](https://inkscape.org/) instalado:
+Com o [Inkscape](https://inkscape.org/):
 
 ```bash
 for s in 16 48 128; do
@@ -19,4 +19,6 @@ for s in 16 48 128; do
 done
 ```
 
-Ou use qualquer editor/ferramenta de exportação de SVG para PNG.
+> As PNGs atuais foram desenhadas via script (Pillow) a partir do mesmo traçado
+> do `icon.svg`. São ícones provisórios; troque pelo design definitivo quando
+> houver.
