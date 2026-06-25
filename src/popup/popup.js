@@ -5,6 +5,7 @@ import { IPC } from '../lib/ipc.js';
 
 const el = {
   status: document.getElementById('status'),
+  detalhe: document.getElementById('detalhe'),
   conectado: document.getElementById('conectado'),
   procurando: document.getElementById('procurando'),
   ip: document.getElementById('ip'),
@@ -12,11 +13,12 @@ const el = {
   btnReset: document.getElementById('btn-reset'),
 };
 
-function render(state) {
+function render(state, detail) {
   const conectado = state === 'connected';
   el.status.textContent = conectado ? 'Conectado ao professor' : 'Procurando o professor…';
   el.conectado.hidden = !conectado;
   el.procurando.hidden = conectado;
+  if (detail !== undefined && el.detalhe) el.detalhe.textContent = detail ?? '';
 }
 
 el.btnIp.addEventListener('click', async () => {
@@ -34,7 +36,7 @@ el.btnReset.addEventListener('click', async () => {
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state);
+  if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state, msg.detail);
 });
 
 chrome.runtime.sendMessage({ cmd: IPC.GET_STATE }).then((r) => render(r?.state ?? 'searching'));

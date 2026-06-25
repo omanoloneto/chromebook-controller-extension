@@ -29,6 +29,7 @@ let looping = false;
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function broadcast(state, detail, teacher) {
+  if (detail) console.log('[CdA]', state, '-', detail);
   chrome.runtime
     .sendMessage({ cmd: IPC.STATE_CHANGED, state, detail: detail ?? null, teacher: teacher ?? null })
     .catch(() => {});
@@ -113,15 +114,23 @@ async function mainLoop() {
   if (looping) return;
   looping = true;
   const id = await ensureIdentity();
+  console.log('[CdA] identidade pronta. deviceId=', id.deviceId);
   while (true) {
     try {
       const binding = await getBinding();
       const hint = await getHint();
-      broadcast('searching', null, binding ? 'vinculado' : null);
+      broadcast('searching', hint.manual ? `varrendo (manual ${hint.manual})…` : 'varrendo a rede…');
 
       const phones = await scanForPhones([hint.manual, hint.last]);
+      console.log('[CdA] varredura: achei', phones.length, 'celular(es)', phones.map((p) => p.ip));
       const phone = pickPhone(phones, binding);
       if (!phone) {
+        broadcast(
+          'searching',
+          phones.length > 0
+            ? 'achei um celular, mas de outro professor (vínculo fixo)'
+            : 'nenhum celular achado nas faixas comuns — informe o IP no popup',
+        );
         await sleep(4000);
         continue;
       }
@@ -130,14 +139,17 @@ async function mainLoop() {
         await chrome.storage.local.set({ [STORAGE_BINDING]: { teacherPub: phone.teacherPub } });
       }
 
+      broadcast('searching', `vinculando a ${phone.ip}…`);
       const teacherPubKey = await importPublicRaw(pubFromB64url(phone.teacherPub));
       const sessionKey = await deriveSessionKey(id.privKey, teacherPubKey);
 
       const boundPub = await doBind(phone.ip, id);
       if (boundPub !== phone.teacherPub) {
+        broadcast('searching', `falha no /bind com ${phone.ip}`);
         await sleep(3000);
         continue;
       }
+      console.log('[CdA] bind ok com', phone.ip);
       await rememberIp(phone.ip);
 
       currentClient = new CommandClient({

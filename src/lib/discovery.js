@@ -13,8 +13,13 @@ const COMMON_PREFIXES = [
   '10.0.1',
   '172.16.0',
 ];
-const PROBE_TIMEOUT_MS = 300;
+const PROBE_TIMEOUT_MS = 600;
 const BATCH = 40;
+
+function prefixOf(ip) {
+  const parts = String(ip).split('.');
+  return parts.length === 4 ? parts.slice(0, 3).join('.') : null;
+}
 
 async function probe(ip) {
   try {
@@ -35,8 +40,15 @@ async function probe(ip) {
 // Para na primeira leva que achar algum servidor (descoberta rápida).
 export async function scanForPhones(hintIps = []) {
   const ips = [];
-  for (const h of hintIps) if (h) ips.push(h);
-  for (const p of COMMON_PREFIXES) {
+  const prefixes = [...COMMON_PREFIXES];
+  // IPs informados primeiro (descoberta instantânea) + o /24 deles.
+  for (const h of hintIps) {
+    if (!h) continue;
+    ips.push(h);
+    const pref = prefixOf(h);
+    if (pref && !prefixes.includes(pref)) prefixes.unshift(pref);
+  }
+  for (const p of prefixes) {
     for (let i = 1; i <= 254; i++) ips.push(`${p}.${i}`);
   }
 
