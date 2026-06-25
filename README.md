@@ -45,12 +45,12 @@ Detalhes em [`docs/arquitetura.md`](docs/arquitetura.md).
 chromebook-controller-extension/
 ├── src/
 │   ├── manifest.json          # Manifest V3
-│   ├── background/            # service worker (mantém a conexão WebRTC)
-│   ├── popup/                # interface da extensão (pareamento/status)
-│   ├── pairing/             # geração e leitura de QR code
-│   ├── lib/                # WebRTC e protocolo de mensagens
-│   └── icons/             # ícones da extensão (a fazer)
-├── docs/                # documentação (arquitetura, protocolo, instalação)
+│   ├── offscreen/            # documento que hospeda a RTCPeerConnection
+│   ├── background/          # service worker (orquestra + chrome.tabs)
+│   ├── popup/              # interface: mostra QR #1 e lê QR #2 (câmera)
+│   ├── lib/              # signal/protocol/ipc + vendor/qrcode.js
+│   └── icons/           # ícones da extensão
+├── docs/              # documentação (arquitetura, protocolo, instalação)
 └── README.md
 ```
 
@@ -62,9 +62,10 @@ Resumo: ative o **Modo do desenvolvedor** em `chrome://extensions`, clique em
 
 ## Roteiro
 
-- [ ] Pareamento por QR code (handshake WebRTC sem servidor)
-- [ ] Comando **abrir URL / nova aba** (função prioritária)
-- [ ] Tela de status da conexão no popup
+- [x] Pareamento por QR code (handshake WebRTC sem servidor)
+- [x] Comando **abrir URL / nova aba** (função prioritária)
+- [x] Tela de status da conexão no popup
+- [ ] Reconexão automática (lembrar pareamento) após o service worker hibernar
 - [ ] Ícones definitivos
 - [ ] Comandos futuros: bloquear/liberar tela, mensagem na tela, fechar abas
 

@@ -43,7 +43,7 @@ EXTENSÃO (Chromebook)                          APP (celular)
 
 ### Conteúdo de cada QR
 
-Cada QR carrega um JSON **comprimido** (para caber). Estrutura antes de comprimir:
+Cada QR carrega este objeto, codificado como **`base64url(JSON)`** (sem padding):
 
 ```json
 {
@@ -54,9 +54,21 @@ Cada QR carrega um JSON **comprimido** (para caber). Estrutura antes de comprimi
 }
 ```
 
+- O `type` do SDP é implícito pelo `role` (`offer`/`answer`).
 - O SDP usa *non-trickle ICE*: esperamos juntar todos os candidatos antes de
   gerar o QR, então o SDP já vem completo.
-- Recomenda-se comprimir (ex.: deflate + base64url) para reduzir o tamanho do QR.
+- **v1 não comprime** — é só `base64url(JSON)`, para garantir que a extensão (JS,
+  `src/lib/signal.js`) e o app (Dart, `lib/src/signal/signal.dart`) produzam e
+  leiam exatamente o mesmo formato. Compressão (deflate) fica como otimização
+  futura, se algum SDP ficar grande demais para o QR.
+
+> **Sem STUN/TURN** (`iceServers: []`): só são coletados *host candidates* da
+> rede local, o que mantém o SDP pequeno e a conexão direta.
+>
+> **mDNS:** o Chrome esconde o IP local atrás de um nome `.local`, o que pode
+> impedir a conexão com o app. A extensão contorna isso pedindo a permissão de
+> **câmera antes** de gerar o offer — com a permissão concedida, o Chrome expõe
+> o IP real da LAN nos candidatos.
 
 ---
 
