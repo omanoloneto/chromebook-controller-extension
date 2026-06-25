@@ -102,6 +102,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       execOpenUrl(msg).then(sendResponse);
       return true;
 
+    case IPC.STORE_GET:
+      chrome.storage.local
+        .get(msg.key)
+        .then((o) => sendResponse({ value: o[msg.key] ?? null }));
+      return true;
+
+    case IPC.STORE_SET:
+      chrome.storage.local
+        .set({ [msg.key]: msg.value })
+        .then(() => sendResponse({ ok: true }));
+      return true;
+
     case IPC.RESET_BIND:
       (async () => {
         await chrome.storage.local.remove(STORAGE_BINDING);

@@ -10,6 +10,10 @@ export const IPC = Object.freeze({
   // service worker -> offscreen
   OFF_RESTART: 'off:restart', // (re)inicia o loop de descoberta/conexão
 
+  // offscreen -> service worker (proxy de storage; offscreen não tem chrome.storage)
+  STORE_GET: 'store:get', // { key } -> { value }
+  STORE_SET: 'store:set', // { key, value } -> { ok }
+
   // offscreen -> service worker (executar comando do celular)
   EXEC_OPEN_URL: 'exec:openUrl', // { url, newTab, focus }; resp { ok, error }
 

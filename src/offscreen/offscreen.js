@@ -28,6 +28,12 @@ let looping = false;
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
+// O offscreen NÃO tem chrome.storage; usa o service worker como proxy.
+const storeGet = async (key) =>
+  (await chrome.runtime.sendMessage({ cmd: IPC.STORE_GET, key }))?.value ?? null;
+const storeSet = (key, value) =>
+  chrome.runtime.sendMessage({ cmd: IPC.STORE_SET, key, value });
+
 function broadcast(state, detail, teacher) {
   if (detail) console.log('[CdA]', state, '-', detail);
   chrome.runtime
@@ -37,7 +43,7 @@ function broadcast(state, detail, teacher) {
 
 async function ensureIdentity() {
   if (identity) return identity;
-  const saved = (await chrome.storage.local.get(STORAGE_KEYPAIR))[STORAGE_KEYPAIR];
+  const saved = await storeGet(STORAGE_KEYPAIR);
   if (saved?.privJwk) {
     identity = {
       privKey: await importPrivateJwk(saved.privJwk),
@@ -51,26 +57,22 @@ async function ensureIdentity() {
   const pubRaw = await exportPublicRaw(kp);
   const deviceId = crypto.randomUUID();
   const label = 'Chromebook-' + deviceId.slice(0, 4);
-  await chrome.storage.local.set({
-    [STORAGE_KEYPAIR]: {
-      privJwk: await exportPrivateJwk(kp),
-      pub: pubToB64url(pubRaw),
-      deviceId,
-      label,
-    },
+  await storeSet(STORAGE_KEYPAIR, {
+    privJwk: await exportPrivateJwk(kp),
+    pub: pubToB64url(pubRaw),
+    deviceId,
+    label,
   });
   identity = { privKey: kp.privateKey, pubRaw, deviceId, label };
   return identity;
 }
 
-const getBinding = async () =>
-  (await chrome.storage.local.get(STORAGE_BINDING))[STORAGE_BINDING] || null;
-const getHint = async () =>
-  (await chrome.storage.local.get(STORAGE_HINT))[STORAGE_HINT] || {};
+const getBinding = async () => (await storeGet(STORAGE_BINDING)) || null;
+const getHint = async () => (await storeGet(STORAGE_HINT)) || {};
 async function rememberIp(ip) {
   const h = await getHint();
   h.last = ip;
-  await chrome.storage.local.set({ [STORAGE_HINT]: h });
+  await storeSet(STORAGE_HINT, h);
 }
 
 function pickPhone(phones, binding) {
@@ -136,7 +138,7 @@ async function mainLoop() {
       }
 
       if (!binding) {
-        await chrome.storage.local.set({ [STORAGE_BINDING]: { teacherPub: phone.teacherPub } });
+        await storeSet(STORAGE_BINDING, { teacherPub: phone.teacherPub });
       }
 
       broadcast('searching', `vinculando a ${phone.ip}…`);
