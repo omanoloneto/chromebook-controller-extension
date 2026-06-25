@@ -1,41 +1,36 @@
-// Service worker (Manifest V3) — orquestra o pareamento e executa comandos.
-//
-// Não faz o long-poll (o SW hiberna): isso vive no offscreen document. O SW só:
-// garante o offscreen, salva o pareamento, executa chrome.tabs e mantém o ícone.
+// Service worker (MV3) — garante o offscreen (descoberta/conexão), executa
+// chrome.tabs e mantém o ícone. A descoberta/long-poll vivem no offscreen.
 
-import { IPC, TARGET_OFFSCREEN, STORAGE_KEY } from '../lib/ipc.js';
+import {
+  IPC,
+  TARGET_OFFSCREEN,
+  STORAGE_BINDING,
+  STORAGE_HINT,
+} from '../lib/ipc.js';
 import { isSafeHttpUrl } from '../lib/protocol.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';
-let lastState = 'disconnected';
+let lastState = 'searching';
+let lastTeacher = null;
 let creating = null;
 
 chrome.runtime.onInstalled.addListener(() => {
-  updateBadge('disconnected');
+  updateBadge('searching');
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
-  bootstrap();
+  ensureOffscreen();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
-  bootstrap();
+  ensureOffscreen();
 });
 
-// O alarme reanima o SW e garante que o offscreen (e o cliente) estão vivos.
 chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name === KEEPALIVE_ALARM) bootstrap();
+  if (a.name === KEEPALIVE_ALARM) ensureOffscreen();
 });
 
-// Se já houver pareamento salvo, sobe o offscreen e (re)inicia o cliente.
-async function bootstrap() {
-  const data = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
-  if (!data?.ip) return;
-  await ensureOffscreen();
-  await sendToOffscreen({ cmd: IPC.OFF_START_CLIENT }).catch(() => {});
-}
-
-// ---- Offscreen document -----------------------------------------------------
+// ---- Offscreen --------------------------------------------------------------
 
 async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({
@@ -49,17 +44,16 @@ async function ensureOffscreen() {
   creating = chrome.offscreen.createDocument({
     url: OFFSCREEN_URL,
     reasons: ['WORKERS'],
-    justification: 'Manter o cliente que busca comandos do celular na rede local.',
+    justification: 'Descobrir o celular do professor e buscar comandos na rede local.',
   });
   await creating;
   creating = null;
 }
 
-function sendToOffscreen(payload) {
-  return chrome.runtime.sendMessage({ target: TARGET_OFFSCREEN, ...payload });
-}
+const tellOffscreen = (payload) =>
+  chrome.runtime.sendMessage({ target: TARGET_OFFSCREEN, ...payload });
 
-// ---- Ícone / status ---------------------------------------------------------
+// ---- Ícone ------------------------------------------------------------------
 
 function updateBadge(state) {
   lastState = state;
@@ -67,11 +61,11 @@ function updateBadge(state) {
   chrome.action.setBadgeText({ text: connected ? '●' : '' });
   chrome.action.setBadgeBackgroundColor({ color: connected ? '#00897b' : '#9e9e9e' });
   chrome.action.setTitle({
-    title: connected ? 'Controle de Aula — conectado' : 'Controle de Aula',
+    title: connected ? 'Controle de Aula — conectado' : 'Controle de Aula — procurando',
   });
 }
 
-// ---- Execução de comandos vindos do celular ---------------------------------
+// ---- Execução de comandos ---------------------------------------------------
 
 async function execOpenUrl({ url, newTab = true, focus = true }) {
   if (!isSafeHttpUrl(url)) return { ok: false, error: 'url_invalida' };
@@ -89,42 +83,43 @@ async function execOpenUrl({ url, newTab = true, focus = true }) {
   }
 }
 
-// ---- Roteamento de mensagens ------------------------------------------------
+// ---- Roteamento -------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  if (msg?.target === TARGET_OFFSCREEN) return false; // é para o offscreen
+  if (msg?.target === TARGET_OFFSCREEN) return false;
 
   switch (msg?.cmd) {
     case IPC.STATE_CHANGED:
+      lastTeacher = msg.teacher ?? lastTeacher;
       updateBadge(msg.state);
       return false;
 
     case IPC.GET_STATE:
-      sendResponse({ state: lastState });
+      sendResponse({ state: lastState, teacher: lastTeacher });
       return false;
-
-    case IPC.PAIR_SAVE:
-      (async () => {
-        try {
-          await chrome.storage.local.set({
-            [STORAGE_KEY]: {
-              ip: msg.ip,
-              port: msg.port,
-              key: msg.key,
-              name: msg.name ?? 'Celular',
-            },
-          });
-          await ensureOffscreen();
-          await sendToOffscreen({ cmd: IPC.OFF_START_CLIENT });
-          sendResponse({ ok: true });
-        } catch (e) {
-          sendResponse({ ok: false, error: String(e?.message ?? e) });
-        }
-      })();
-      return true;
 
     case IPC.EXEC_OPEN_URL:
       execOpenUrl(msg).then(sendResponse);
+      return true;
+
+    case IPC.RESET_BIND:
+      (async () => {
+        await chrome.storage.local.remove(STORAGE_BINDING);
+        await ensureOffscreen();
+        await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
+        sendResponse({ ok: true });
+      })();
+      return true;
+
+    case IPC.SET_MANUAL_IP:
+      (async () => {
+        const hint = (await chrome.storage.local.get(STORAGE_HINT))[STORAGE_HINT] || {};
+        hint.manual = msg.ip || null;
+        await chrome.storage.local.set({ [STORAGE_HINT]: hint });
+        await ensureOffscreen();
+        await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
+        sendResponse({ ok: true });
+      })();
       return true;
 
     default:

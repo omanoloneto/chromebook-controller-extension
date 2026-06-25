@@ -22,6 +22,6 @@
     "type": "module"
   },
   "permissions": ["tabs", "storage", "offscreen", "alarms"],
-  "optional_host_permissions": ["http://*/*"],
+  "host_permissions": ["http://*/*"],
   "minimum_chrome_version": "144"
 }

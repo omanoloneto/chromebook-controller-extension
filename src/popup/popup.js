@@ -1,30 +1,40 @@
-// Popup = lançador. O pareamento de fato roda numa aba (pairing/pairing.html),
-// porque a câmera (getUserMedia) não funciona no popup de extensão.
+// Popup — mostra o status do vínculo, permite desvincular e informar o IP do
+// celular (fallback quando a descoberta automática não acha).
 
 import { IPC } from '../lib/ipc.js';
 
 const el = {
   status: document.getElementById('status'),
-  dica: document.getElementById('dica'),
   conectado: document.getElementById('conectado'),
-  btnParear: document.getElementById('btn-parear'),
+  procurando: document.getElementById('procurando'),
+  ip: document.getElementById('ip'),
+  btnIp: document.getElementById('btn-ip'),
+  btnReset: document.getElementById('btn-reset'),
 };
 
 function render(state) {
   const conectado = state === 'connected';
-  el.status.textContent = conectado ? 'Conectado' : 'Não pareado';
+  el.status.textContent = conectado ? 'Conectado ao professor' : 'Procurando o professor…';
   el.conectado.hidden = !conectado;
-  el.dica.hidden = conectado;
-  el.btnParear.textContent = conectado ? 'Parear outro celular' : 'Parear';
+  el.procurando.hidden = conectado;
 }
 
-el.btnParear.addEventListener('click', async () => {
-  await chrome.tabs.create({ url: chrome.runtime.getURL('pairing/pairing.html') });
-  window.close();
+el.btnIp.addEventListener('click', async () => {
+  const ip = el.ip.value.trim();
+  if (!ip) return;
+  el.btnIp.disabled = true;
+  await chrome.runtime.sendMessage({ cmd: IPC.SET_MANUAL_IP, ip }).catch(() => {});
+  el.status.textContent = 'Tentando ' + ip + '…';
+  el.btnIp.disabled = false;
+});
+
+el.btnReset.addEventListener('click', async () => {
+  await chrome.runtime.sendMessage({ cmd: IPC.RESET_BIND }).catch(() => {});
+  render('searching');
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state);
 });
 
-chrome.runtime.sendMessage({ cmd: IPC.GET_STATE }).then((r) => render(r?.state ?? 'disconnected'));
+chrome.runtime.sendMessage({ cmd: IPC.GET_STATE }).then((r) => render(r?.state ?? 'searching'));

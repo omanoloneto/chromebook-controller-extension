@@ -1,52 +1,42 @@
 # Instalação — Extensão (desenvolvimento)
 
-> A extensão ainda **não está na Chrome Web Store**. Por enquanto, instala-se
-> como *unpacked* (sem compactação), em modo de desenvolvedor.
+> Ainda **não está na Chrome Web Store**. Instala-se como *unpacked*.
 
 ## Pré-requisitos
 
-- **Chrome ≥ 144** (ChromeOS ou desktop). Versões anteriores podem bloquear o
-  acesso à rede local (ver [Local Network Access](#local-network-access-lna)).
-- Celular e Chromebook na **mesma rede Wi-Fi**, **sem client/AP isolation**.
-- Este repositório baixado no aparelho.
+- **Chrome ≥ 144** (ChromeOS ou desktop).
+- Chromebook e celular na **mesma Wi-Fi**, **sem client/AP isolation**.
 
-## Passo a passo (instalar)
+## Instalar
 
-1. Abra `chrome://extensions`.
-2. Ative o **Modo do desenvolvedor**.
-3. Clique em **Carregar sem compactação**.
-4. Selecione a pasta **`src/`** deste repositório (a `src`, não a raiz do repo).
-5. Fixe o ícone na barra.
+1. `chrome://extensions` → ative o **Modo do desenvolvedor**.
+2. **Carregar sem compactação** → selecione a pasta **`src/`**.
+3. Aceite o aviso de permissão (a extensão precisa de `http://*/*` para varrer a
+   rede local e achar o celular do professor).
 
-Para atualizar após editar arquivos: clique em **recarregar** (↻) no cartão.
+## Como funciona (sem QR)
 
-## Uso (parear e enviar)
+1. O professor abre o app no celular (ele vira servidor e mostra o IP).
+2. A extensão, sozinha, **varre a rede**, acha o celular e se **vincula** ao
+   **primeiro** professor encontrado (TOFU). O PC passa a aparecer na lista do app.
+3. O professor digita uma URL no app → abre no Chromebook.
 
-1. No **celular**, abra o app **Controle de Aula** — ele mostra **1 QR**.
-2. No **Chromebook**, abra o popup da extensão → **Parear** (abre uma aba).
-3. A aba pede **câmera** → permita → aponte para o QR do celular.
-4. Clique em **Conectar a `<ip>`** → permita o acesso à **rede local** quando
-   pedido.
-5. Pronto: o status fica **Conectado**. No app, digite uma URL e ela abre no
-   Chromebook.
+O ícone fica verde quando conectado. **Não há pareamento manual** no caso comum.
 
-> A conexão é **direta e criptografada** (a chave vai só no QR). Não há botão de
-> cancelar: enquanto o app estiver aberto, a extensão reconecta sozinha.
+## Se não achar automaticamente
+
+- Abra o popup → digite o **IP do celular** (mostrado no app) em "Usar este IP".
+- Confira: mesma Wi-Fi; rede **sem isolamento de cliente**; Chrome **≥ 144**.
+- Teste cru: abra `http://<ip-do-celular>:47615/` numa aba → deve responder um JSON
+  com `"app":"controle-de-aula"`.
+
+## Trocar de professor / reinstalar o app
+
+O PC fica vinculado a um professor. Para vincular a outro (ou se o app foi
+reinstalado), abra o popup → **"Desvincular professor"**.
 
 ## Local Network Access (LNA)
 
-O Chrome 142+ exige permissão para acessar a rede local. A extensão pede acesso
-só para `http://<ip-do-celular>/*` (no clique de **Conectar**). Em **Chromebook
-gerenciado** pela escola, o administrador pode liberar sem prompt com a política
-**`LocalNetworkAccessAllowedForUrls`** (Google Admin Console). Se o acesso for
-bloqueado, confirme que o Chrome está **≥ 144**.
-
-## Problemas comuns
-
-- **"Permissão de rede local negada":** aceite o prompt; em frota gerenciada,
-  peça ao admin a política acima.
-- **Conecta mas nada abre:** confirme a **mesma Wi-Fi** e que a rede **não isola
-  clientes**. Teste cru: abra `http://<ip>:<porta>/` numa aba — deve responder
-  `controle-de-aula`.
-- **Câmera não abre:** clique no ícone de câmera na barra de endereço da aba e
-  permita.
+Chrome 142+ exige permissão de rede local; extensões com `host_permissions` são
+isentas do prompt (corrigido para extensões no **Chrome 144**). Em **Chromebook
+gerenciado**, o admin pode liberar com a política `LocalNetworkAccessAllowedForUrls`.

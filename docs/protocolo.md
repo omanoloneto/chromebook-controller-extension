@@ -1,122 +1,75 @@
-# Protocolo do Controle de Aula
+# Protocolo do Controle de Aula (v3)
 
-> 📌 **Documento compartilhado.** Este arquivo é **idêntico** nos dois
-> repositórios (`chromebook-controller-extension` e
-> `chromebook-controller-app`). Ao alterar o protocolo, atualize os **dois**.
+> 📌 **Documento compartilhado** — idêntico nos dois repositórios. Ao alterar,
+> atualize os **dois**.
 
-Dois papéis, invertidos em relação ao "WebRTC" antigo:
-
-- **Celular (app) = SERVIDOR HTTP** na rede local (abre uma porta).
-- **Chromebook (extensão) = CLIENTE** (só faz requisições de saída — uma extensão
-  MV3 não pode abrir porta).
+Modelo: **celular = servidor** multi-cliente na LAN; **Chromebooks (extensão) =
+clientes** que se **descobrem** sozinhos, **vinculam** (TOFU) e fazem short-poll.
 
 ```
-CELULAR (servidor)                         CHROMEBOOK (cliente)
-mostra QR {ip,porta,chave}  ── câmera ──►   lê o QR, pede permissão do IP
-fila de comandos                            POST /poll (long-poll ~25s)
-professor digita URL ─► open_url (cifrado)► recebe, abre a aba (chrome.tabs)
-                         ◄── POST /ack ───   devolve ACK cifrado
+CELULAR (servidor, porta fixa 47615)        CHROMEBOOK (extensão, cliente)
+GET /  -> banner {teacherPub,...}    ◄────   varre a LAN, lê o banner
+POST /bind (X25519) -> sessão        ◄────   TOFU: vincula ao 1o professor achado
+POST /poll?id (cifrado) -> comando   ◄────   short-poll; abre a aba
+POST /ack?id  (cifrado)              ◄────   confirma
 ```
 
----
+## 1. Descoberta (banner)
 
-## 1. Pareamento — 1 QR (lido pelo Chromebook)
-
-O celular mostra **um** QR. O Chromebook escaneia com a câmera (na aba de
-pareamento). Conteúdo do QR: **`base64url(JSON)`** (sem padding):
+A extensão **não** conhece a própria sub-rede (limite do MV3). Ela **varre faixas
+privadas comuns** (`192.168.0/1/2/3.x`, `10.0.0/1.x`, `172.16.0.x`) na **porta
+fixa 47615**, fazendo `GET /`. O servidor responde **em claro**:
 
 ```json
-{
-  "v": 2,
-  "ip": "192.168.1.50",
-  "port": 53117,
-  "key": "<base64url de 32 bytes>",
-  "name": "Celular do professor"
-}
+{ "app": "controle-de-aula", "v": 3, "name": "Professor", "teacherPub": "<base64url 32 bytes>" }
 ```
 
-- `ip`/`port`: onde o servidor do celular está escutando na LAN. Porta efêmera
-  aleatória por sessão.
-- `key`: chave de **256 bits** (AES). **Só existe no QR** — nunca trafega pela
-  rede. O canal físico (câmera) é o que torna o pareamento seguro.
+`teacherPub` = chave pública X25519 de longo prazo do celular do professor.
 
-Depois de ler, a extensão pede `host_permission` para `http://<ip>/*` (gesto do
-usuário) e passa a fazer long-poll.
+> Best-effort: só acha em redes `/24` comuns, **sem client/AP isolation**. Há
+> **fallback manual** (informar o IP do celular na extensão).
 
----
+## 2. Vínculo (TOFU + X25519)
 
-## 2. Transporte — long-poll HTTP, tudo cifrado
+A extensão gera (1x) seu par X25519 (`devicePub`/`devicePriv`) e um `deviceId`.
 
-A extensão (cliente) faz requisições ao servidor do celular. Todo **corpo** é um
-**envelope cifrado** (texto, base64). Não há `/auth` nem sessão: **a chave do QR
-já é a credencial** — quem consegue cifrar/decifrar com ela é a parte pareada.
+- `POST /bind` com corpo JSON `{ devicePub, deviceId, label }`.
+- O servidor deriva a **chave de sessão** e responde `{ ok: true, teacherPub }`.
+- **Derivação (os dois lados):**
+  `sessão = HKDF-SHA256( X25519(priv, peerPub), salt="controle-de-aula", info="session-key-v3", 32 bytes )`.
+  O segredo **nunca trafega** (derivado independentemente). Há **teste de paridade**
+  com vetor fixo (`keypair.js` ↔ `keypair.dart`).
+- **TOFU/exclusividade:** a extensão **fixa** a `teacherPub` do 1º professor achado
+  e passa a ignorar banners de outras `teacherPub`. Reset: "Desvincular professor".
 
-### Envelope (AES-256-GCM)
+## 3. Transporte cifrado (por sessão)
 
-Bytes no fio (depois, em base64 padrão): **`nonce(12) || ciphertext || tag(16)`**.
-Texto em claro (antes de cifrar) é um JSON UTF-8:
+Igual ao envelope AES-256-GCM já usado, agora com a **chave de sessão** do passo 2
+e **roteado por `deviceId`**:
 
+- `POST /poll?id=<deviceId>` — corpo = envelope `{type:"poll"}`. Resposta 200 com
+  envelope de **comando** ou **`pong`**. Resposta **404** = servidor não conhece a
+  sessão → a extensão refaz `/bind`.
+- `POST /ack?id=<deviceId>` — corpo = envelope `{type:"ack", id, ok, error}`.
+
+**Envelope (base64):** `nonce(12) || ciphertext || tag(16)` (AES-256-GCM). Texto em
+claro = JSON `{ seq, ts, type, ... }`. `seq` monotônico **por sessão e por
+direção**; janela de `ts` ±120s. Sem AAD (seq/ts vão dentro do JSON autenticado).
+
+### Comando `open_url`
 ```json
-{ "seq": 42, "ts": 1750000000000, "type": "open_url",
-  "id": "a42", "payload": { "url": "https://...", "newTab": true, "focus": true } }
+{ "type":"open_url", "id":"a42", "payload":{ "url":"https://...", "newTab":true, "focus":true } }
 ```
+`broadcast` (turma toda) = enfileirar o mesmo comando em todas as sessões.
 
-- `nonce`: 12 bytes aleatórios por mensagem (nunca reutilizar com a mesma chave).
-- `seq`: contador monotônico **por direção** (cliente→servidor e servidor→cliente
-  têm contadores separados).
-- `ts`: epoch em ms.
-- **Sem AAD** — `seq`/`ts` já viajam dentro do JSON, autenticado pelo tag do GCM.
+## 4. Segurança (resumo)
 
-> **Interop JS↔Dart:** o Web Crypto **anexa** o tag ao ciphertext; o `SecretBox`
-> do Dart mantém separado. Por isso o formato no fio é fixado como
-> `nonce || ciphertext || tag`. Há teste de paridade com vetor fixo nos dois
-> lados (mesma chave/nonce/plaintext → mesmo envelope).
+- **AES-256-GCM** ponta-a-ponta; **X25519** deriva a chave (segredo nunca trafega).
+- **Anti-replay** por `seq` crescente + janela de `ts`.
+- **Exclusividade TOFU:** a extensão fixa a pubkey do professor.
+- **Risco aceito:** TOFU é vulnerável a um professor rival que vincule primeiro e a
+  MITM ativo **no 1º contato** na LAN. Depois do vínculo, a sessão é cifrada e a
+  pubkey fixada. **Fora do escopo:** rede com *client isolation*.
 
-### Endpoints (todos no servidor do celular)
-
-| Rota | Quem chama | O que faz |
-|------|-----------|-----------|
-| `GET /` | qualquer | Responde `controle-de-aula` (teste de conectividade crua). |
-| `POST /poll` | extensão | Corpo = envelope `{type:"poll"}`. O servidor **segura** a resposta até ter comando ou ~25s; responde 200 com envelope de **comando** ou de **`pong`** (keepalive + autentica o servidor a cada ciclo). |
-| `POST /ack` | extensão | Corpo = envelope `{type:"ack", id, ok, error}` referente a um comando. |
-
-Corpo inválido (não decifra, `seq` repetido ou `ts` fora da janela de ±120s) →
-**401**, sem vazar detalhe.
-
-### Comando: `open_url` (função prioritária — MVP)
-
-```json
-{ "type": "open_url", "id": "a42",
-  "payload": { "url": "https://exemplo.com.br", "newTab": true, "focus": true } }
-```
-Na extensão: valida `url` (http/https) → `chrome.tabs.create`/`update` → responde
-`ack`.
-
-### `pong` (keepalive)
-
-```json
-{ "type": "pong" }
-```
-Resposta de `/poll` quando não há comando. Confirma que o servidor está vivo e
-detém a chave.
-
----
-
-## 3. Segurança (resumo)
-
-- **Confidencialidade + integridade:** AES-256-GCM em todo comando/ACK.
-- **Autenticação mútua implícita:** só quem tem a chave do QR cifra/decifra.
-- **Anti-replay:** `seq` estritamente crescente por direção + janela de `ts` (±120s).
-- **Chave fora da rede:** entregue só pelo QR (canal físico via câmera).
-- **Menor superfície:** a extensão pede permissão só para `http://<ip-do-celular>/*`.
-
-Ameaça coberta: outro aparelho na mesma Wi-Fi não consegue ler nem injetar
-comandos (sem a chave). **Fora do escopo:** rede com *client isolation* (bloqueia
-qualquer conexão LAN) e aparelho fisicamente comprometido.
-
----
-
-## 4. Tipos reservados (futuro)
-
+## 5. Tipos reservados (futuro)
 `lock_screen`, `unlock_screen`, `show_message`, `close_tabs`, `focus_mode`.
-Receptor ignora `type` desconhecido e responde `ack` com `ok:false`.

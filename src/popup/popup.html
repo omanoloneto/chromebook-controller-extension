@@ -9,21 +9,27 @@
   <body>
     <header>
       <h1>Controle de Aula</h1>
-      <p class="status" id="status">Não pareado</p>
+      <p class="status" id="status">Procurando o professor…</p>
     </header>
 
     <main>
-      <p id="dica" class="passo">Conecte ao celular do professor para receber sites nesta tela.</p>
-
       <section id="conectado" hidden>
-        <p class="ok">✅ Conectado ao celular.</p>
+        <p class="ok">✅ Conectado ao professor.</p>
       </section>
 
-      <button id="btn-parear">Parear</button>
+      <section id="procurando">
+        <p class="passo">Procurando o celular do professor na rede…</p>
+        <p class="dica">Funciona sozinho na mesma Wi-Fi. Se demorar, informe o IP
+          do celular (aparece no app):</p>
+        <input id="ip" type="text" inputmode="decimal" placeholder="ex.: 192.168.1.50" />
+        <button id="btn-ip">Usar este IP</button>
+      </section>
+
+      <button id="btn-reset" class="secundario">Desvincular professor</button>
     </main>
 
     <footer>
-      <small>O pareamento abre em uma aba (a câmera não funciona no popup).</small>
+      <small>O 1º professor que encontrar este PC fica vinculado a ele.</small>
     </footer>
 
     <script type="module" src="popup.js"></script>
