@@ -1,19 +1,39 @@
 // Service worker (Manifest V3) — orquestra o pareamento e executa comandos.
 //
-// Não roda WebRTC (impossível em service worker): isso fica no offscreen
-// document. O service worker só: cria/garante o offscreen, encaminha mensagens
-// do popup, executa comandos do navegador (chrome.tabs) e atualiza o ícone.
+// Não faz o long-poll (o SW hiberna): isso vive no offscreen document. O SW só:
+// garante o offscreen, salva o pareamento, executa chrome.tabs e mantém o ícone.
 
-import { IPC, TARGET_OFFSCREEN } from '../lib/ipc.js';
+import { IPC, TARGET_OFFSCREEN, STORAGE_KEY } from '../lib/ipc.js';
 import { isSafeHttpUrl } from '../lib/protocol.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
+const KEEPALIVE_ALARM = 'keepalive';
 let lastState = 'disconnected';
 let creating = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge('disconnected');
+  chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
+  bootstrap();
 });
+
+chrome.runtime.onStartup.addListener(() => {
+  chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
+  bootstrap();
+});
+
+// O alarme reanima o SW e garante que o offscreen (e o cliente) estão vivos.
+chrome.alarms.onAlarm.addListener((a) => {
+  if (a.name === KEEPALIVE_ALARM) bootstrap();
+});
+
+// Se já houver pareamento salvo, sobe o offscreen e (re)inicia o cliente.
+async function bootstrap() {
+  const data = (await chrome.storage.local.get(STORAGE_KEY))[STORAGE_KEY];
+  if (!data?.ip) return;
+  await ensureOffscreen();
+  await sendToOffscreen({ cmd: IPC.OFF_START_CLIENT }).catch(() => {});
+}
 
 // ---- Offscreen document -----------------------------------------------------
 
@@ -28,8 +48,8 @@ async function ensureOffscreen() {
   }
   creating = chrome.offscreen.createDocument({
     url: OFFSCREEN_URL,
-    reasons: ['WEB_RTC'],
-    justification: 'Manter a conexão WebRTC com o celular do professor.',
+    reasons: ['WORKERS'],
+    justification: 'Manter o cliente que busca comandos do celular na rede local.',
   });
   await creating;
   creating = null;
@@ -72,8 +92,7 @@ async function execOpenUrl({ url, newTab = true, focus = true }) {
 // ---- Roteamento de mensagens ------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
-  // Mensagens destinadas ao offscreen não são tratadas aqui.
-  if (msg?.target === TARGET_OFFSCREEN) return false;
+  if (msg?.target === TARGET_OFFSCREEN) return false; // é para o offscreen
 
   switch (msg?.cmd) {
     case IPC.STATE_CHANGED:
@@ -84,41 +103,23 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       sendResponse({ state: lastState });
       return false;
 
-    case IPC.PAIR_START:
+    case IPC.PAIR_SAVE:
       (async () => {
         try {
-          await ensureOffscreen();
-          const res = await sendToOffscreen({ cmd: IPC.OFF_CREATE_OFFER });
-          sendResponse(res);
-        } catch (e) {
-          sendResponse({ ok: false, error: String(e?.message ?? e) });
-        }
-      })();
-      return true;
-
-    case IPC.PAIR_ANSWER:
-      (async () => {
-        try {
-          await ensureOffscreen();
-          const res = await sendToOffscreen({
-            cmd: IPC.OFF_ACCEPT_ANSWER,
-            answer: msg.answer,
+          await chrome.storage.local.set({
+            [STORAGE_KEY]: {
+              ip: msg.ip,
+              port: msg.port,
+              key: msg.key,
+              name: msg.name ?? 'Celular',
+            },
           });
-          sendResponse(res);
+          await ensureOffscreen();
+          await sendToOffscreen({ cmd: IPC.OFF_START_CLIENT });
+          sendResponse({ ok: true });
         } catch (e) {
           sendResponse({ ok: false, error: String(e?.message ?? e) });
         }
-      })();
-      return true;
-
-    case IPC.PAIR_RESET:
-      (async () => {
-        try {
-          await ensureOffscreen();
-          await sendToOffscreen({ cmd: IPC.OFF_CLOSE });
-        } catch {}
-        updateBadge('disconnected');
-        sendResponse({ ok: true });
       })();
       return true;
 

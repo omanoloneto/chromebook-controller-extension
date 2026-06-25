@@ -5,36 +5,48 @@
 
 ## Pré-requisitos
 
-- Um **Chromebook** (ou Chrome no desktop) com o navegador atualizado.
-- Este repositório baixado/clonado no aparelho.
+- **Chrome ≥ 144** (ChromeOS ou desktop). Versões anteriores podem bloquear o
+  acesso à rede local (ver [Local Network Access](#local-network-access-lna)).
+- Celular e Chromebook na **mesma rede Wi-Fi**, **sem client/AP isolation**.
+- Este repositório baixado no aparelho.
 
-## Passo a passo
+## Passo a passo (instalar)
 
-1. Abra o Chrome e acesse `chrome://extensions`.
-2. Ative o **Modo do desenvolvedor** (canto superior direito).
+1. Abra `chrome://extensions`.
+2. Ative o **Modo do desenvolvedor**.
 3. Clique em **Carregar sem compactação**.
-4. Selecione a pasta **`src/`** deste repositório.
-5. A extensão aparece na lista. Fixe o ícone na barra para abrir o popup.
+4. Selecione a pasta **`src/`** deste repositório (a `src`, não a raiz do repo).
+5. Fixe o ícone na barra.
 
-## Atualizando após mudanças
+Para atualizar após editar arquivos: clique em **recarregar** (↻) no cartão.
 
-Depois de editar arquivos em `src/`, volte em `chrome://extensions` e clique no
-ícone de **recarregar** (↻) no cartão da extensão.
+## Uso (parear e enviar)
 
-## Uso (quando implementado)
+1. No **celular**, abra o app **Controle de Aula** — ele mostra **1 QR**.
+2. No **Chromebook**, abra o popup da extensão → **Parear** (abre uma aba).
+3. A aba pede **câmera** → permita → aponte para o QR do celular.
+4. Clique em **Conectar a `<ip>`** → permita o acesso à **rede local** quando
+   pedido.
+5. Pronto: o status fica **Conectado**. No app, digite uma URL e ela abre no
+   Chromebook.
 
-1. No Chromebook, abra o popup da extensão e toque em **Parear**.
-2. A extensão mostra o **QR #1**.
-3. No app (celular), escaneie o QR #1; o app mostra o **QR #2**.
-4. No Chromebook, escaneie o QR #2 com a câmera.
-5. Conectado! Agora o celular pode enviar URLs para o Chromebook.
+> A conexão é **direta e criptografada** (a chave vai só no QR). Não há botão de
+> cancelar: enquanto o app estiver aberto, a extensão reconecta sozinha.
 
-Detalhes do handshake em [`protocolo.md`](protocolo.md).
+## Local Network Access (LNA)
+
+O Chrome 142+ exige permissão para acessar a rede local. A extensão pede acesso
+só para `http://<ip-do-celular>/*` (no clique de **Conectar**). Em **Chromebook
+gerenciado** pela escola, o administrador pode liberar sem prompt com a política
+**`LocalNetworkAccessAllowedForUrls`** (Google Admin Console). Se o acesso for
+bloqueado, confirme que o Chrome está **≥ 144**.
 
 ## Problemas comuns
 
-- **Não conecta:** confirme que celular e Chromebook estão na **mesma rede
-  Wi-Fi**. Redes de escola às vezes isolam aparelhos (*client isolation*); nesse
-  caso, peça ao suporte de TI para liberar.
-- **Service worker "inativo":** normal no Manifest V3; ele reativa ao receber
-  uma mensagem. Se a conexão cair, basta reabrir o popup.
+- **"Permissão de rede local negada":** aceite o prompt; em frota gerenciada,
+  peça ao admin a política acima.
+- **Conecta mas nada abre:** confirme a **mesma Wi-Fi** e que a rede **não isola
+  clientes**. Teste cru: abra `http://<ip>:<porta>/` numa aba — deve responder
+  `controle-de-aula`.
+- **Câmera não abre:** clique no ícone de câmera na barra de endereço da aba e
+  permita.

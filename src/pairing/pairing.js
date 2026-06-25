@@ -1,34 +1,33 @@
-// Página de pareamento (roda numa ABA, não no popup).
-// Motivo: getUserMedia (câmera) no popup falha — o prompt de permissão tira o
-// foco e fecha o popup, cancelando a permissão. Numa aba normal funciona e a
-// permissão fica salva para a origem da extensão.
+// Aba de pareamento (roda numa ABA, porque a câmera não funciona no popup).
+// Agora ela SÓ LÊ o QR do celular, pede permissão para o IP e salva o pareamento.
 
 import { IPC } from '../lib/ipc.js';
+import { parsePairingQr } from './qr.js';
 
 const el = {
   status: document.getElementById('status'),
   erro: document.getElementById('erro'),
-  etapaOffer: document.getElementById('etapa-offer'),
-  etapaAnswer: document.getElementById('etapa-answer'),
+  etapaCamera: document.getElementById('etapa-camera'),
+  etapaConfirmar: document.getElementById('etapa-confirmar'),
   etapaOk: document.getElementById('etapa-ok'),
-  qrOffer: document.getElementById('qr-offer'),
+  alvo: document.getElementById('alvo'),
   camera: document.getElementById('camera'),
+  btnConectar: document.getElementById('btn-conectar'),
   btnFechar: document.getElementById('btn-fechar'),
 };
 
 let stream = null;
 let detector = null;
 let scanning = false;
+let creds = null; // { ip, port, key, name }
 
-function mostrarErro(texto) {
-  el.erro.textContent = texto;
-  el.erro.hidden = !texto;
+function mostrarErro(t) {
+  el.erro.textContent = t;
+  el.erro.hidden = !t;
 }
-
-function setStatus(texto) {
-  el.status.textContent = texto;
+function setStatus(t) {
+  el.status.textContent = t;
 }
-
 function pararCamera() {
   scanning = false;
   if (stream) {
@@ -38,27 +37,9 @@ function pararCamera() {
   el.camera.srcObject = null;
 }
 
-function mostrarConectado() {
-  pararCamera();
-  el.etapaOffer.hidden = true;
-  el.etapaAnswer.hidden = true;
-  el.etapaOk.hidden = false;
-  el.btnFechar.hidden = false;
-  setStatus('Conectado');
-}
-
-function renderQr(container, texto) {
-  const qr = qrcode(0, 'L'); // tipo automático, nível L (maior capacidade)
-  qr.addData(texto);
-  qr.make();
-  container.innerHTML = qr.createSvgTag({ cellSize: 5, margin: 4, scalable: true });
-}
-
 async function abrirCamera() {
   if (!('BarcodeDetector' in window)) {
-    throw new Error(
-      'Este Chrome não tem leitor de QR (BarcodeDetector). Atualize o Chrome/ChromeOS.',
-    );
+    throw new Error('Este Chrome não tem leitor de QR. Atualize o Chrome/ChromeOS.');
   }
   stream = await navigator.mediaDevices.getUserMedia({
     video: { facingMode: 'environment' },
@@ -76,59 +57,82 @@ function iniciarScan() {
       const codes = await detector.detect(el.camera);
       if (codes.length > 0) {
         scanning = false;
-        return aoLerAnswer(codes[0].rawValue);
+        return aoLerQr(codes[0].rawValue);
       }
     } catch {
-      // quadro sem QR — continua
+      // quadro sem QR
     }
     setTimeout(loop, 200);
   };
   loop();
 }
 
-async function aoLerAnswer(texto) {
-  setStatus('Conectando…');
-  const res = await chrome.runtime.sendMessage({ cmd: IPC.PAIR_ANSWER, answer: texto });
-  if (res?.ok) return; // sucesso chega pelo evento STATE_CHANGED
-  mostrarErro('QR inválido: ' + (res?.error ?? 'desconhecido') + '. Tentando de novo…');
-  iniciarScan();
-}
-
-async function iniciar() {
-  mostrarErro('');
+function aoLerQr(texto) {
   try {
-    // 1) Câmera (e permissão) ANTES do offer: faz o Chrome expor o IP real da
-    //    LAN (sem mDNS), essencial para conectar com o app.
-    setStatus('Pedindo acesso à câmera…');
-    await abrirCamera();
-
-    // 2) Pede o offer ao offscreen (via service worker) e mostra o QR #1.
-    setStatus('Gerando código…');
-    const res = await chrome.runtime.sendMessage({ cmd: IPC.PAIR_START });
-    if (!res?.ok) throw new Error(res?.error ?? 'falha ao gerar offer');
-
-    renderQr(el.qrOffer, res.offer);
-    el.etapaOffer.hidden = false;
-    el.etapaAnswer.hidden = false;
-    setStatus('Aguardando o celular…');
-
-    // 3) Lê o QR de resposta do celular.
-    iniciarScan();
+    creds = parsePairingQr(texto);
   } catch (e) {
-    const msg = String(e?.name === 'NotAllowedError'
-      ? 'Permissão de câmera negada. Clique no cadeado da aba e permita a câmera.'
-      : e?.message ?? e);
-    mostrarErro(msg);
-    setStatus('Falhou');
+    mostrarErro('QR inválido (' + (e?.message ?? e) + '). Continue apontando.');
+    iniciarScan(); // tenta de novo com a mesma câmera
+    return;
   }
+  pararCamera();
+  mostrarErro('');
+  el.alvo.textContent = `${creds.ip}:${creds.port}`;
+  el.etapaCamera.hidden = true;
+  el.etapaConfirmar.hidden = false;
+  setStatus('QR lido');
 }
 
-// Status vindo do offscreen/service worker.
-chrome.runtime.onMessage.addListener((msg) => {
-  if (msg?.cmd !== IPC.STATE_CHANGED) return;
-  if (msg.state === 'connected') mostrarConectado();
+// Clique = gesto do usuário (necessário para pedir a permissão do host).
+el.btnConectar.addEventListener('click', async () => {
+  if (!creds) return;
+  mostrarErro('');
+  el.btnConectar.disabled = true;
+  try {
+    const granted = await chrome.permissions.request({
+      origins: [`http://${creds.ip}/*`],
+    });
+    if (!granted) throw new Error('Permissão de rede local negada.');
+
+    setStatus('Conectando…');
+    const res = await chrome.runtime.sendMessage({
+      cmd: IPC.PAIR_SAVE,
+      ip: creds.ip,
+      port: creds.port,
+      key: creds.key,
+      name: creds.name,
+    });
+    if (!res?.ok) throw new Error(res?.error ?? 'falha ao iniciar');
+    // O sucesso final chega pelo evento STATE_CHANGED ('connected').
+  } catch (e) {
+    mostrarErro(String(e?.message ?? e));
+  } finally {
+    el.btnConectar.disabled = false;
+  }
 });
 
 el.btnFechar.addEventListener('click', () => window.close());
 
-iniciar();
+chrome.runtime.onMessage.addListener((msg) => {
+  if (msg?.cmd === IPC.STATE_CHANGED && msg.state === 'connected') {
+    el.etapaConfirmar.hidden = true;
+    el.etapaOk.hidden = false;
+    el.btnFechar.hidden = false;
+    setStatus('Conectado');
+  }
+});
+
+// Início.
+(async () => {
+  try {
+    setStatus('Pedindo acesso à câmera…');
+    el.etapaCamera.hidden = false;
+    await abrirCamera();
+    setStatus('Procurando o QR do celular…');
+    iniciarScan();
+  } catch (e) {
+    el.etapaCamera.hidden = true;
+    mostrarErro(String(e?.message ?? e));
+    setStatus('Falhou');
+  }
+})();

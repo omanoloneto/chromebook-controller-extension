@@ -1,74 +1,79 @@
-# Arquitetura — Extensão (Chromebook)
+# Arquitetura — Extensão (Chromebook, cliente)
 
 ## Visão geral
 
-O **Controle de Aula** tem dois componentes que conversam **diretamente pela
-rede local**, sem nenhum servidor central:
+O **Controle de Aula** funciona na **rede local**, sem nuvem. Os papéis são:
 
-- **App de controle** (celular Android) — envia comandos.
-- **Extensão** (este repo, no Chromebook do professor) — recebe comandos e age
-  no navegador (por exemplo, abrindo uma URL).
+- **Celular (app) = servidor HTTP** local. Mostra **1 QR** com `{ip, porta, chave}`.
+- **Extensão (este repo) = cliente.** Lê o QR (câmera), pede permissão para o IP
+  do celular e faz **long-poll** buscando comandos. Quando chega um `open_url`,
+  abre a aba no Chromebook.
 
 ```
         REDE LOCAL DA ESCOLA (mesma Wi-Fi)
-┌──────────────────────────────────────────────────────┐
-│                                                        │
-│   ┌───────────────┐                ┌────────────────┐  │
-│   │   Celular     │  WebRTC P2P    │   Chromebook   │  │
-│   │   (app)       │ ─────────────► │   (extensão)   │  │
-│   │               │   DataChannel  │                │  │
-│   │  - escolhe    │ ◄───────────── │  - abre aba    │  │
-│   │    a URL      │      ACK       │  - dá foco     │  │
-│   └───────────────┘                └────────────────┘  │
-│                                                        │
-└──────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────┐
+│   CELULAR (servidor)              CHROMEBOOK (extensão)  │
+│   abre porta :p                   offscreen: long-poll   │
+│   mostra QR  ── câmera ─────────► pairing: lê o QR        │
+│   fila de comandos                                       │
+│   open_url ─ cifrado (AES-GCM) ─► abre a aba (chrome.tabs)│
+│            ◄──── ACK cifrado ────                         │
+└────────────────────────────────────────────────────────┘
 ```
 
-## Por que WebRTC na rede local?
-
-- **Sem nuvem, sem custo de servidor.** O `RTCDataChannel` cria um canal P2P
-  direto entre os dois aparelhos.
-- **Privacidade.** Nenhum dado de aula sai da rede da escola.
-- **Latência baixa.** Os dois aparelhos estão no mesmo Wi-Fi; o ICE encontra os
-  *host candidates* da LAN e a conexão é direta.
-
-O único ponto difícil do WebRTC sem servidor é a **sinalização** (troca inicial
-de SDP/ICE). Resolvemos isso com **QR code** — ver
-[`protocolo.md`](protocolo.md).
+> **Por que o celular é o servidor?** Uma extensão Chrome MV3 **não pode abrir
+> porta** (a API de socket servidor só existia nos Chrome Apps). Como a extensão
+> só faz conexões de **saída**, quem escuta tem que ser o celular.
 
 ## Componentes da extensão (Manifest V3)
 
 | Parte | Pasta | Responsabilidade |
 |-------|-------|------------------|
-| **Offscreen document** | `src/offscreen/` | **Dono da `RTCPeerConnection` / `RTCDataChannel`** (papel *offerer*). Roda fora do service worker porque WebRTC não existe em service workers. Cria o offer, aceita o answer e recebe as mensagens do celular. |
-| **Service worker** | `src/background/` | Orquestra: cria/garante o offscreen, encaminha mensagens do popup, executa os comandos no navegador (`chrome.tabs`) e atualiza o ícone/status. |
-| **Aba de pareamento** | `src/pairing/` | Mostra o QR #1 e **lê o QR #2 com a câmera** (`BarcodeDetector`). Roda numa aba (não no popup) porque a câmera não funciona em popup de extensão. |
-| **Popup** | `src/popup/` | Lançador: mostra o status e o botão **Parear** (que abre a aba de pareamento). |
-| **Biblioteca** | `src/lib/` | `signal.js` (codificação dos QR), `protocol.js` (mensagens do DataChannel), `ipc.js` (mensagens internas) e `vendor/qrcode.js` (geração de QR). |
-
-### Por que um *offscreen document*?
-
-No Manifest V3, o **service worker não roda WebRTC** e ainda pode ser
-**encerrado quando ocioso**. A `RTCPeerConnection` precisa de um documento com
-DOM que persista — o *offscreen document* (`chrome.offscreen`, motivo
-`WEB_RTC`) cumpre esse papel e sobrevive ao fechamento do popup.
+| **Offscreen document** | `src/offscreen/` | Hospeda o **cliente de long-poll** (`lib/client.js`). Roda fora do service worker porque o loop de `fetch` precisa de um contexto que **não hiberna**. |
+| **Service worker** | `src/background/` | Garante o offscreen, salva o pareamento em `chrome.storage.local`, executa `chrome.tabs` (`open_url`), atualiza o ícone e usa `chrome.alarms` para reanimar/reconectar. |
+| **Aba de pareamento** | `src/pairing/` | **Lê o QR do celular** (`getUserMedia` + `BarcodeDetector`), pede `host_permission` do IP e salva o pareamento. Roda numa aba porque a câmera não funciona no popup. |
+| **Popup** | `src/popup/` | Lançador: mostra status e o botão **Parear** (abre a aba de pareamento). **Sem botão de cancelar.** |
+| **Biblioteca** | `src/lib/` | `crypto.js` (AES-256-GCM), `client.js` (long-poll), `protocol.js` (validação de URL/tipos), `ipc.js` (mensagens internas). `pairing/qr.js` decodifica o QR. |
 
 ```
-popup  ←→  service worker  ←→  offscreen (RTCPeerConnection)
-(UI/QR)     (rotas/chrome.tabs)   (conexão com o celular)
+popup  →(abre aba)→  pairing  →(salva creds)→  service worker  ⇄  offscreen (long-poll → servidor do celular)
 ```
 
-## Permissões usadas
+## Ciclo de vida (MV3) e reconexão
+
+- O **service worker hiberna** após ~30s ocioso e **não roda WebRTC nem mantém
+  loops longos**. Por isso o long-poll vive no **offscreen document** (motivo
+  `WORKERS`, sem limite de vida).
+- O pareamento `{ip, porta, chave, nome}` fica em `chrome.storage.local`. Um
+  `chrome.alarms` periódico reanima o SW, que garante o offscreen vivo — assim a
+  conexão **se restabelece sozinha** (não há botão de cancelar/reconectar).
+
+## Local Network Access (LNA) — atenção em Chromebook gerenciado
+
+O Chrome 142+ liga o **LNA** (permissão para acessar a rede local). Extensões com
+`host_permission` correto são isentas do prompt, mas correções para extensões só
+entraram no **Chrome 144** (inclusive o caso de extensão instalada por política,
+comum em escola). Por isso:
+
+- `minimum_chrome_version: "144"`.
+- `optional_host_permissions: ["http://*/*"]` + pedido do **IP exato** lido do QR
+  (menor superfície e satisfaz o prompt).
+- Em frota gerenciada, o admin pode liberar via política
+  `LocalNetworkAccessAllowedForUrls`. Ver [`instalacao.md`](instalacao.md).
+
+## Permissões
 
 | Permissão | Para quê |
 |-----------|----------|
-| `tabs` | Abrir e focar abas (`chrome.tabs.create` / `update`). |
-| `offscreen` | Criar o *offscreen document* que hospeda a `RTCPeerConnection`. |
-| `storage` | Guardar o pareamento já feito para reconectar sem novo QR (futuro). |
-| Câmera (`getUserMedia`) | Ler o QR de resposta do celular durante o pareamento. Solicitada em tempo de uso, não no manifest. |
+| `tabs` | Abrir/focar abas (`chrome.tabs.create`/`update`). |
+| `offscreen` | Hospedar o cliente de long-poll. |
+| `storage` | Guardar o pareamento e reconectar sozinho. |
+| `alarms` | Reanimar o service worker e garantir o offscreen. |
+| `optional_host_permissions: http://*/*` | Pedido em tempo de uso só para `http://<ip-do-celular>/*`. |
+| Câmera (`getUserMedia`) | Ler o QR do celular. Solicitada em tempo de uso, na aba. |
 
 ## Decisões em aberto
 
-- Reconexão automática após o service worker hibernar.
-- Suporte a mais de um Chromebook controlado pelo mesmo celular (turma inteira).
-- Autenticação/PIN além do QR, para evitar pareamento indevido.
+- Reconexão quando o **IP do celular muda** (sem mDNS, exige reparear).
+- Vários Chromebooks controlados pelo mesmo celular (turma).
+- Comandos além de `open_url` (bloquear tela, mensagem, fechar abas).

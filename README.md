@@ -1,43 +1,35 @@
 # Controle de Aula — Extensão (Chromebook)
 
-Extensão Chrome (Manifest V3) que transforma o **Chromebook do professor** em um
-aparelho controlável à distância pelo **celular do professor**. Faz parte do
-projeto **Controle de Aula**, formado por dois componentes independentes:
+Extensão Chrome (Manifest V3) que recebe comandos do **celular do professor**
+pela **rede local** e age no Chromebook (ex.: abrir um site na tela projetada).
+Faz parte do projeto **Controle de Aula**, com dois componentes:
 
-| Componente | Repositório | Onde roda |
-|------------|-------------|-----------|
-| **Extensão** (este repo) | `chromebook-controller-extension` | Chromebook do professor (ligado ao projetor) |
-| **App de controle** | [`chromebook-controller-app`](https://github.com/omanoloneto/chromebook-controller-app) | Celular Android do professor |
+| Componente | Repositório | Papel |
+|------------|-------------|-------|
+| **Extensão** (este repo) | `chromebook-controller-extension` | **Cliente** no Chromebook |
+| **App de controle** | [`chromebook-controller-app`](https://github.com/omanoloneto/chromebook-controller-app) | **Servidor** no celular Android |
 
-> ⚠️ **Status:** projeto em fase inicial. Este repositório contém a **estrutura,
-> a documentação e os esqueletos de código**. As funções ainda **não estão
-> implementadas** — veja o [roteiro](#roteiro).
+> ⚠️ **Status:** em desenvolvimento. O pareamento e o comando **abrir URL** já
+> estão implementados. Não testado ainda entre dois aparelhos reais.
 
-## Para que serve
+## Como funciona
 
-O professor liga o Chromebook ao projetor/TV da sala e instala esta extensão.
-Pelo celular (app), ele controla o que aparece na tela sem precisar voltar à mesa.
-
-A **primeira função** prevista é **enviar uma URL / abrir uma aba**: o professor
-digita ou escolhe um site no celular e ele abre na hora no Chromebook projetado.
-
-## Como funciona (resumo)
-
-- Comunicação **direta entre celular e Chromebook**, pela **rede local** da escola.
-- Sem servidor central e **sem nuvem** — usa **WebRTC (DataChannel)**.
-- O pareamento é feito por **QR code** (handshake de dois QR codes). Veja
-  [`docs/protocolo.md`](docs/protocolo.md).
+- O **celular roda um servidor** local e mostra **1 QR** (`ip`, `porta`, `chave`).
+- A **extensão é cliente**: lê o QR com a câmera, pede permissão para o IP do
+  celular e faz **long-poll** buscando comandos.
+- Tudo **criptografado ponta-a-ponta** (AES-256-GCM); a chave vai **só no QR**.
+- **Sem nuvem, sem servidor central, sem botão de cancelar** (reconecta sozinho).
 
 ```
-┌─────────────┐   comando (JSON)    ┌──────────────────────┐
-│  Celular    │ ──────────────────► │  Chromebook          │
-│  (app)      │   WebRTC DataChannel│  (esta extensão)     │
-│  controle   │ ◄────────────────── │  abre a aba/URL      │
-└─────────────┘        ACK          └──────────────────────┘
-        \_______________ rede local da escola _______________/
+CELULAR (servidor)                         CHROMEBOOK (esta extensão, cliente)
+mostra QR {ip,porta,chave} ── câmera ───►  lê o QR, pede permissão do IP
+open_url (cifrado) ─────────────────────►  abre a aba (chrome.tabs)
+                   ◄──────── ACK cifrado    devolve confirmação
 ```
 
-Detalhes em [`docs/arquitetura.md`](docs/arquitetura.md).
+> **Por que o celular é o servidor?** Uma extensão MV3 **não pode abrir porta**;
+> só faz conexões de saída. Detalhes em [`docs/arquitetura.md`](docs/arquitetura.md)
+> e [`docs/protocolo.md`](docs/protocolo.md).
 
 ## Estrutura do repositório
 
@@ -45,39 +37,34 @@ Detalhes em [`docs/arquitetura.md`](docs/arquitetura.md).
 chromebook-controller-extension/
 ├── src/
 │   ├── manifest.json          # Manifest V3
-│   ├── offscreen/            # documento que hospeda a RTCPeerConnection
-│   ├── background/          # service worker (orquestra + chrome.tabs)
-│   ├── pairing/            # ABA de pareamento: gera QR #1 e lê QR #2 (câmera)
+│   ├── offscreen/            # hospeda o cliente de long-poll (não hiberna)
+│   ├── background/          # service worker (orquestra + chrome.tabs + alarms)
+│   ├── pairing/            # ABA: lê o QR do celular (câmera) e pede permissão
 │   ├── popup/             # lançador: status + botão "Parear"
-│   ├── lib/             # signal/protocol/ipc + vendor/qrcode.js
-│   └── icons/          # ícones da extensão
-├── docs/             # documentação (arquitetura, protocolo, instalação)
+│   ├── lib/              # crypto.js, client.js, protocol.js, ipc.js
+│   └── icons/
+├── docs/                # arquitetura, protocolo, instalação
 └── README.md
 ```
 
-> **Por que o pareamento abre em uma aba?** A câmera (`getUserMedia`) não
-> funciona no popup de extensão — o prompt de permissão tira o foco e fecha o
-> popup. Numa aba normal funciona e a permissão fica salva.
-
 ## Instalação (desenvolvimento)
 
-Resumo: ative o **Modo do desenvolvedor** em `chrome://extensions`, clique em
-**Carregar sem compactação** e aponte para a pasta `src/`. Passo a passo em
-[`docs/instalacao.md`](docs/instalacao.md).
+Requer **Chrome ≥ 144**. Ative o **Modo do desenvolvedor** em
+`chrome://extensions`, **Carregar sem compactação** e aponte para a pasta
+`src/`. Passo a passo e notas de rede em [`docs/instalacao.md`](docs/instalacao.md).
 
 ## Roteiro
 
-- [x] Pareamento por QR code (handshake WebRTC sem servidor)
-- [x] Comando **abrir URL / nova aba** (função prioritária)
-- [x] Tela de status da conexão no popup
-- [ ] Reconexão automática (lembrar pareamento) após o service worker hibernar
-- [ ] Ícones definitivos
-- [ ] Comandos futuros: bloquear/liberar tela, mensagem na tela, fechar abas
+- [x] Pareamento com **1 QR** (lido pelo Chromebook)
+- [x] Transporte cifrado (AES-256-GCM) por long-poll HTTP
+- [x] Comando **abrir URL / nova aba**
+- [x] Reconexão automática (storage + alarms), sem botão de cancelar
+- [ ] Reconexão quando o IP do celular muda (sem mDNS)
+- [ ] Comandos futuros: bloquear/liberar tela, mensagem, fechar abas
 
 ## Contribuindo
 
-Veja [`CONTRIBUTING.md`](CONTRIBUTING.md). Toda a documentação do projeto é em
-português.
+Veja [`CONTRIBUTING.md`](CONTRIBUTING.md). Documentação em português.
 
 ## Licença
 

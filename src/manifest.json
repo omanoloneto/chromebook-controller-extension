@@ -21,6 +21,7 @@
     "service_worker": "background/service-worker.js",
     "type": "module"
   },
-  "permissions": ["tabs", "storage", "offscreen"],
-  "minimum_chrome_version": "116"
+  "permissions": ["tabs", "storage", "offscreen", "alarms"],
+  "optional_host_permissions": ["http://*/*"],
+  "minimum_chrome_version": "144"
 }

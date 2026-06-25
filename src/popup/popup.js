@@ -8,7 +8,6 @@ const el = {
   dica: document.getElementById('dica'),
   conectado: document.getElementById('conectado'),
   btnParear: document.getElementById('btn-parear'),
-  btnEncerrar: document.getElementById('btn-encerrar'),
 };
 
 function render(state) {
@@ -16,18 +15,12 @@ function render(state) {
   el.status.textContent = conectado ? 'Conectado' : 'Não pareado';
   el.conectado.hidden = !conectado;
   el.dica.hidden = conectado;
-  el.btnParear.hidden = conectado;
-  el.btnEncerrar.hidden = !conectado;
+  el.btnParear.textContent = conectado ? 'Parear outro celular' : 'Parear';
 }
 
 el.btnParear.addEventListener('click', async () => {
   await chrome.tabs.create({ url: chrome.runtime.getURL('pairing/pairing.html') });
   window.close();
-});
-
-el.btnEncerrar.addEventListener('click', async () => {
-  await chrome.runtime.sendMessage({ cmd: IPC.PAIR_RESET }).catch(() => {});
-  render('disconnected');
 });
 
 chrome.runtime.onMessage.addListener((msg) => {
