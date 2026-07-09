@@ -195,8 +195,12 @@ Sem ack para comandos de estado (aplicação é idempotente e guardada por
 
 **`set_rules`** — snapshot **completo** das regras de bloqueio (lista vazia
 limpa tudo). Só regras de **bloqueio** viajam; regras de **alerta** são
-avaliadas apenas no celular. `rev` = epoch-ms da última edição. Caps (nos dois
-lados): ≤ 1000 regras, `pattern` ≤ 200 chars:
+avaliadas apenas no celular. O snapshot **pode variar por PC**: liberações
+concedidas pelo professor durante a aula (um site liberado só para um PC) são
+simplesmente omitidas do snapshot daquele device — o cliente não sabe nem
+precisa saber que existe uma exceção. `rev` = epoch-ms **monotônico por
+distribuição** (muda também quando uma liberação entra/sai, não só na edição
+das regras). Caps (nos dois lados): ≤ 1000 regras, `pattern` ≤ 200 chars:
 
 ```json
 { "v":1, "type":"set_rules", "id":"a45",
