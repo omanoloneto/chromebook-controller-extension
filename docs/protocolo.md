@@ -157,6 +157,23 @@ uma aba vazia antes:
 { "v":1, "type":"close_tabs", "id":"a44", "payload":{ "url":"https://www.youtube.com/watch?v=abc" } }
 ```
 
+**`close_all_tabs`** (v0.4.1+) — fecha tudo, sem filtro. `closeWindows`
+(default `false`):
+
+- `false` → fecha todas as abas, abrindo **1 aba vazia antes** (não derruba a
+  janela) — o "limpar abas" avulso.
+- `true` → fecha **todas as janelas** do Chrome (`chrome.windows`) — usado
+  pelo "Encerrar aula" do app; no ChromeOS o aluno cai na área de trabalho e a
+  extensão continua rodando (offscreen não é janela). Em Chrome desktop (dev),
+  fechar a última janela pode encerrar o navegador.
+
+Fechar 0 abas/janelas ainda é `ack {ok:true}` (idempotente). Cliente < 0.4.1
+responde `ack {ok:false, error:"tipo_desconhecido"}` — inofensivo.
+
+```json
+{ "v":1, "type":"close_all_tabs", "id":"a47", "payload":{ "closeWindows": true } }
+```
+
 **Ack**
 ```json
 { "type":"ack", "id":"a43", "ok":true }

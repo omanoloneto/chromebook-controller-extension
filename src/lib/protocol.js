@@ -19,6 +19,7 @@ export const MessageType = Object.freeze({
   PONG: 'pong',
   TAB_REPORT: 'tab_report',
   CLOSE_TABS: 'close_tabs',
+  CLOSE_ALL_TABS: 'close_all_tabs',
   SET_RULES: 'set_rules',
   SET_WALLPAPER: 'set_wallpaper',
   // Reservados (futuro):

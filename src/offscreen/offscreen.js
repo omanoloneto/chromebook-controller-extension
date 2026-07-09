@@ -174,6 +174,8 @@ async function executarComando(cmd) {
       return exec(IPC.EXEC_OPEN_URL, cmd.payload);
     case MessageType.CLOSE_TABS:
       return exec(IPC.EXEC_CLOSE_TABS, cmd.payload);
+    case MessageType.CLOSE_ALL_TABS:
+      return exec(IPC.EXEC_CLOSE_ALL_TABS, cmd.payload);
     case MessageType.SET_RULES:
       return exec(IPC.EXEC_SET_RULES, cmd.payload);
     case MessageType.SET_WALLPAPER:

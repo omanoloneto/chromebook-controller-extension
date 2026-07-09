@@ -19,6 +19,7 @@ export const IPC = Object.freeze({
   // offscreen -> service worker (executar comando do professor)
   EXEC_OPEN_URL: 'exec:openUrl', // { url, newTab, focus }; resp { ok, error }
   EXEC_CLOSE_TABS: 'exec:closeTabs', // { domain?, url? }; resp { ok, error }
+  EXEC_CLOSE_ALL_TABS: 'exec:closeAllTabs', // { closeWindows? }; resp { ok, error }
   EXEC_SET_RULES: 'exec:setRules', // { rev, rules }; resp { ok }
   EXEC_WALLPAPER: 'exec:wallpaper', // { jpegB64, hash }; resp { ok, error }
 

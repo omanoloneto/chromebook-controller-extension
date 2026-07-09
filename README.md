@@ -82,7 +82,8 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
 - [x] Transporte Firebase RTDB (REST + SSE, sem SDK) + Auth anônima
 - [x] Pareamento por **QR** (token one-time, rotacionado a cada uso)
 - [x] Vínculo exclusivo (TOFU) X25519 + AES-256-GCM ponta-a-ponta
-- [x] Comandos **abrir URL** / **fechar abas**; anti-replay persistido
+- [x] Comandos **abrir URL** / **fechar abas** / **fechar tudo** (abas ou o
+      navegador inteiro — "encerrar aula"); anti-replay persistido
 - [x] **Monitorar abas** (somente URLs/títulos, sem captura de tela)
 - [x] **Bloqueio de sites** (persiste offline) + página "Site bloqueado"
 - [x] **Papel de parede** da turma (`chrome.wallpaper`, só ChromeOS)

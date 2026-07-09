@@ -115,6 +115,30 @@ async function execFecharAbas({ domain, url }) {
   }
 }
 
+// Fecha TUDO (fim de aula/limpar abas). closeWindows=true derruba as janelas
+// inteiras (aluno cai na área de trabalho; a extensão sobrevive — o offscreen
+// não é janela). closeWindows=false fecha as abas deixando 1 vazia.
+async function execFecharTudo({ closeWindows = false } = {}) {
+  try {
+    if (closeWindows) {
+      const janelas = await chrome.windows.getAll();
+      for (const j of janelas) {
+        await chrome.windows.remove(j.id).catch(() => {});
+      }
+      return { ok: true };
+    }
+    const todas = await chrome.tabs.query({});
+    if (todas.length > 0) {
+      // Fechar a última aba fecharia a janela — abre uma vazia antes.
+      await chrome.tabs.create({});
+      await chrome.tabs.remove(todas.map((t) => t.id));
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
 // Aplica o snapshot de regras de bloqueio e varre as abas já abertas.
 async function execAplicarRegras({ rev, rules }) {
   const limpas = (Array.isArray(rules) ? rules : [])
@@ -312,6 +336,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case IPC.EXEC_CLOSE_TABS:
       execFecharAbas(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_CLOSE_ALL_TABS:
+      execFecharTudo(msg).then(sendResponse);
       return true;
 
     case IPC.EXEC_SET_RULES:
