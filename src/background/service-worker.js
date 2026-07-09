@@ -1,13 +1,16 @@
-// Service worker (MV3) — garante o offscreen (descoberta/conexão), executa
-// chrome.tabs e mantém o ícone. A descoberta/long-poll vivem no offscreen.
+// Service worker (MV3) — garante o offscreen (conexão Firebase), executa
+// chrome.tabs e mantém o ícone. O cliente RTDB (SSE/auth) vive no offscreen.
 
 import {
   IPC,
   TARGET_OFFSCREEN,
-  STORAGE_BINDING,
-  STORAGE_HINT,
+  STORAGE_KEYPAIR,
+  STORAGE_PAIRING,
+  STORAGE_NAVLOG,
+  STORAGE_RULES,
 } from '../lib/ipc.js';
-import { isSafeHttpUrl } from '../lib/protocol.js';
+import { isSafeHttpUrl, makeTabReport, MAX_REPORT_EVENTS } from '../lib/protocol.js';
+import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';
@@ -44,7 +47,7 @@ async function ensureOffscreen() {
   creating = chrome.offscreen.createDocument({
     url: OFFSCREEN_URL,
     reasons: ['WORKERS'],
-    justification: 'Descobrir o celular do professor e buscar comandos na rede local.',
+    justification: 'Manter a conexão com o Firebase e receber comandos do professor.',
   });
   await creating;
   creating = null;
@@ -61,7 +64,11 @@ function updateBadge(state) {
   chrome.action.setBadgeText({ text: connected ? '●' : '' });
   chrome.action.setBadgeBackgroundColor({ color: connected ? '#00897b' : '#9e9e9e' });
   chrome.action.setTitle({
-    title: connected ? 'Controle de Aula — conectado' : 'Controle de Aula — procurando',
+    title: connected
+      ? 'Controle de Aula — conectado'
+      : state === 'pairing'
+        ? 'Controle de Aula — aguardando pareamento (QR no popup)'
+        : 'Controle de Aula — conectando',
   });
 }
 
@@ -83,6 +90,198 @@ async function execOpenUrl({ url, newTab = true, focus = true }) {
   }
 }
 
+// Fecha abas por domínio (hostCasa) ou URL exata. Fechar 0 abas ainda é ok.
+async function execFecharAbas({ domain, url }) {
+  if (!domain && !url) return { ok: false, error: 'payload_invalido' };
+  try {
+    const todas = await chrome.tabs.query({});
+    const alvo = todas.filter((t) => {
+      if (!isSafeHttpUrl(t.url)) return false;
+      if (url) return t.url === url;
+      try {
+        return hostCasa(new URL(t.url).hostname.toLowerCase(), domain);
+      } catch {
+        return false;
+      }
+    });
+    if (alvo.length > 0) {
+      // Fechar a última aba fecharia a janela — abre uma vazia antes.
+      if (alvo.length === todas.length) await chrome.tabs.create({});
+      await chrome.tabs.remove(alvo.map((t) => t.id));
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
+// Aplica o snapshot de regras de bloqueio e varre as abas já abertas.
+async function execAplicarRegras({ rev, rules }) {
+  const limpas = (Array.isArray(rules) ? rules : [])
+    .filter((r) => typeof r?.pattern === 'string' && r.pattern.length > 0)
+    .slice(0, MAX_RULES)
+    .map((r) => ({ pattern: r.pattern.slice(0, MAX_RULE_PATTERN) }));
+  regrasCache = limpas;
+  await chrome.storage.local.set({
+    [STORAGE_RULES]: { rev: typeof rev === 'number' ? rev : 0, rules: limpas },
+  });
+  try {
+    const todas = await chrome.tabs.query({});
+    for (const t of todas) {
+      if (isSafeHttpUrl(t.url) && acharRegra(limpas, t.url)) bloquearAba(t.id, t.url);
+    }
+  } catch {
+    // varredura é best-effort
+  }
+  return { ok: true };
+}
+
+// Troca o papel de parede do ChromeOS com o blob (base64) vindo do RTDB —
+// o offscreen busca /wallpapers/{teacherUid} (dono do token) e passa por IPC.
+async function execTrocarPapelDeParede({ jpegB64, hash }) {
+  if (chrome.wallpaper === undefined) return { ok: false, error: 'so_chromeos' };
+  if (typeof jpegB64 !== 'string' || !jpegB64) return { ok: false, error: 'blob_invalido' };
+  try {
+    const bin = atob(jpegB64);
+    if (bin.length > 10 * 1024 * 1024) return { ok: false, error: 'imagem_grande' };
+    const data = new ArrayBuffer(bin.length);
+    const view = new Uint8Array(data);
+    for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
+    await new Promise((resolve, reject) => {
+      chrome.wallpaper.setWallpaper(
+        {
+          data,
+          layout: 'CENTER_CROPPED',
+          filename: `professor-${String(hash ?? '').slice(0, 16)}.jpg`,
+        },
+        () => {
+          const err = chrome.runtime.lastError;
+          if (err) reject(new Error(err.message));
+          else resolve();
+        },
+      );
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
+// ---- Monitoramento de abas ----------------------------------------------------
+// Listeners top-level (síncronos) para o MV3 acordar o SW no evento; só o log de
+// navegação persiste em storage — o snapshot de abas é montado sob demanda.
+
+// Serializa read-modify-write do navlog dentro de uma vida do SW.
+let navlogChain = Promise.resolve();
+
+function registrarEventoNav(tab) {
+  if (!tab || !isSafeHttpUrl(tab.url)) return;
+  const entrada = {
+    url: tab.url,
+    title: tab.title ?? '',
+    ts: Date.now(),
+    tabId: tab.id ?? null,
+  };
+  navlogChain = navlogChain
+    .then(async () => {
+      const log = (await chrome.storage.local.get(STORAGE_NAVLOG))[STORAGE_NAVLOG] ?? [];
+      const ultimo = log[log.length - 1];
+      if (ultimo && ultimo.url === entrada.url) {
+        // Mesma página (re-ativação/título tardio): só atualiza título e hora.
+        ultimo.title = entrada.title || ultimo.title;
+        ultimo.ts = entrada.ts;
+      } else {
+        log.push(entrada);
+      }
+      await chrome.storage.local.set({
+        [STORAGE_NAVLOG]: log.slice(-MAX_REPORT_EVENTS),
+      });
+    })
+    .catch(() => {});
+}
+
+// Título chega depois da URL em muitos sites; preenche a entrada correspondente.
+function backfillTitulo(tabId, title) {
+  if (!title) return;
+  navlogChain = navlogChain
+    .then(async () => {
+      const log = (await chrome.storage.local.get(STORAGE_NAVLOG))[STORAGE_NAVLOG] ?? [];
+      const ultimo = log[log.length - 1];
+      if (ultimo && ultimo.tabId === tabId && !ultimo.title) {
+        ultimo.title = title;
+        await chrome.storage.local.set({ [STORAGE_NAVLOG]: log });
+      }
+    })
+    .catch(() => {});
+}
+
+// ---- Bloqueio de sites (regras do professor) ---------------------------------
+// Snapshot vem do celular via set_rules e persiste em storage; cache em memória
+// por vida do SW para o caminho quente do onUpdated.
+
+let regrasCache = null; // [{pattern}] | null (ainda não carregado)
+
+async function carregarRegras() {
+  if (regrasCache !== null) return regrasCache;
+  const salvo = (await chrome.storage.local.get(STORAGE_RULES))[STORAGE_RULES];
+  regrasCache = Array.isArray(salvo?.rules) ? salvo.rules : [];
+  return regrasCache;
+}
+
+function bloquearAba(tabId, url) {
+  let dominio = '';
+  try {
+    dominio = new URL(url).hostname;
+  } catch {
+    // fica vazio
+  }
+  chrome.tabs
+    .update(tabId, {
+      url: chrome.runtime.getURL('blocked/blocked.html') + '?d=' + encodeURIComponent(dominio),
+    })
+    .catch(() => {});
+}
+
+async function aplicarBloqueio(tabId, url) {
+  if (!isSafeHttpUrl(url)) return;
+  const regras = await carregarRegras();
+  if (regras.length && acharRegra(regras, url)) bloquearAba(tabId, url);
+}
+
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  // Na troca de URL o tab.title ainda é o da página anterior; grava vazio e
+  // deixa o backfill preencher quando o título novo chegar.
+  if (changeInfo.url) {
+    registrarEventoNav({ ...tab, title: changeInfo.title ?? '' });
+    // A tentativa fica no navlog ANTES do bloqueio — o professor vê a tentativa.
+    aplicarBloqueio(tabId, changeInfo.url);
+  } else if (changeInfo.title) {
+    backfillTitulo(tabId, changeInfo.title);
+  }
+});
+
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs
+    .get(tabId)
+    .then((tab) => registrarEventoNav(tab))
+    .catch(() => {});
+});
+
+async function montarRelatorio() {
+  const [todas, [ativa]] = await Promise.all([
+    chrome.tabs.query({}),
+    chrome.tabs.query({ active: true, lastFocusedWindow: true }),
+  ]);
+  const tabs = todas.map((t) => ({
+    url: t.url,
+    title: t.title,
+    active: ativa != null && t.id === ativa.id,
+  }));
+  const log = (await chrome.storage.local.get(STORAGE_NAVLOG))[STORAGE_NAVLOG] ?? [];
+  const events = log.map(({ url, title, ts }) => ({ url, title, ts }));
+  return makeTabReport(tabs, events);
+}
+
 // ---- Roteamento -------------------------------------------------------------
 
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
@@ -95,11 +294,54 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return false;
 
     case IPC.GET_STATE:
-      sendResponse({ state: lastState, teacher: lastTeacher });
-      return false;
+      chrome.storage.local
+        .get(STORAGE_KEYPAIR)
+        .then((o) =>
+          sendResponse({
+            state: lastState,
+            teacher: lastTeacher,
+            label: o[STORAGE_KEYPAIR]?.label ?? null,
+          }),
+        )
+        .catch(() => sendResponse({ state: lastState, teacher: lastTeacher, label: null }));
+      return true;
 
     case IPC.EXEC_OPEN_URL:
       execOpenUrl(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_CLOSE_TABS:
+      execFecharAbas(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_SET_RULES:
+      execAplicarRegras(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_WALLPAPER:
+      execTrocarPapelDeParede(msg).then(sendResponse);
+      return true;
+
+    case IPC.TABS_REPORT:
+      montarRelatorio()
+        .then((report) => sendResponse({ report }))
+        .catch(() => sendResponse({ report: null }));
+      return true;
+
+    case IPC.SET_LABEL:
+      (async () => {
+        const label = String(msg.label ?? '').trim().slice(0, 40);
+        const kp = (await chrome.storage.local.get(STORAGE_KEYPAIR))[STORAGE_KEYPAIR];
+        if (!kp || !label) {
+          sendResponse({ ok: false });
+          return;
+        }
+        kp.label = label;
+        await chrome.storage.local.set({ [STORAGE_KEYPAIR]: kp });
+        await ensureOffscreen();
+        await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
+        sendResponse({ ok: true });
+      })();
       return true;
 
     case IPC.STORE_GET:
@@ -116,21 +358,31 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case IPC.RESET_BIND:
       (async () => {
-        await chrome.storage.local.remove(STORAGE_BINDING);
+        // O offscreen desfaz o vínculo no RTDB (delete + rotação do token) e
+        // limpa o storage via proxy.
         await ensureOffscreen();
-        await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
+        await tellOffscreen({ cmd: IPC.OFF_UNBIND }).catch(() => {});
         sendResponse({ ok: true });
       })();
       return true;
 
-    case IPC.SET_MANUAL_IP:
+    case IPC.GET_PAIRING:
       (async () => {
-        const hint = (await chrome.storage.local.get(STORAGE_HINT))[STORAGE_HINT] || {};
-        hint.manual = msg.ip || null;
-        await chrome.storage.local.set({ [STORAGE_HINT]: hint });
-        await ensureOffscreen();
-        await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
-        sendResponse({ ok: true });
+        // Dados do QR: identidade pública + token one-time (nada secreto além
+        // do token, que só vale para quem vê a tela deste PC).
+        const o = await chrome.storage.local.get([STORAGE_KEYPAIR, STORAGE_PAIRING]);
+        const kp = o[STORAGE_KEYPAIR];
+        const pair = o[STORAGE_PAIRING];
+        if (!kp?.deviceId || !pair?.token) {
+          sendResponse(null); // offscreen ainda não registrou
+          return;
+        }
+        sendResponse({
+          deviceId: kp.deviceId,
+          pub: kp.pub,
+          token: pair.token,
+          label: kp.label ?? '',
+        });
       })();
       return true;
 

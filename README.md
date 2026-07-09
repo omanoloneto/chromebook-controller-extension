@@ -1,31 +1,39 @@
 # Controle de Aula — Extensão (Chromebook)
 
-Extensão Chrome (Manifest V3) que se conecta **sozinha** ao celular do professor
-na **rede local** e age no Chromebook (ex.: abrir um site). Faz parte do projeto
-**Controle de Aula**:
+Extensão Chrome (Manifest V3) que exibe um **QR de pareamento** e, depois de
+escaneada pelo professor, recebe comandos via **Firebase Realtime Database**
+com **criptografia ponta-a-ponta** — funciona mesmo com Chromebook e celular em
+**redes Wi-Fi diferentes**. Faz parte do projeto **Controle de Aula**:
 
 | Componente | Repositório | Papel |
 |------------|-------------|-------|
-| **Extensão** (este repo) | `chromebook-controller-extension` | **Cliente** no Chromebook |
-| **App de controle** | [`chromebook-controller-app`](https://github.com/omanoloneto/chromebook-controller-app) | **Servidor** no celular Android |
+| **Extensão** (este repo) | `chromebook-controller-extension` | Cliente no Chromebook |
+| **App de controle** | [`chromebook-controller-app`](https://github.com/omanoloneto/chromebook-controller-app) | Celular do professor |
 
-> ⚠️ **Status:** em desenvolvimento. Descoberta automática, vínculo TOFU e o
-> comando **abrir URL** já implementados (handshake/cripto validados em teste).
-> Conexão real entre 2 aparelhos ainda não testada em campo.
+> ⚠️ **Status:** em desenvolvimento. Protocolo v4 (Firebase) implementado nos
+> dois lados; conexão real entre 2 aparelhos ainda não testada em campo.
 
-## Como funciona (sem QR)
+## Como funciona (pareamento por QR)
 
-- O **celular roda um servidor** local (porta fixa 47615) e publica um **banner**.
-- A **extensão descobre o celular** varrendo a rede, **vincula-se** ao **primeiro**
-  professor que a encontra (**TOFU**) e faz **short-poll** buscando comandos.
-- Vínculo **exclusivo**: o PC fica preso àquele celular (chave pública fixada).
-- Tudo **criptografado ponta-a-ponta** (X25519 → AES-256-GCM). Sem nuvem.
+- A extensão autentica no Firebase (conta anônima) e **exibe um QR** no popup
+  (e em tela cheia). O professor **escaneia 1x** com o app: o PC fica
+  **vinculado** (TOFU — vínculo exclusivo, imposto pelas Security Rules; o
+  token do QR é de uso único).
+- Depois disso a extensão escuta o próprio nó no RTDB por **SSE** e obedece só
+  ao professor pinado: abre/fecha abas, aplica bloqueios, troca o papel de
+  parede.
+- No mesmo canal ela **informa as abas abertas e as URLs visitadas** (somente
+  URLs/títulos — **sem captura de tela**), cifradas ponta-a-ponta (o Google não
+  vê o conteúdo).
+- **Sem SDK do Firebase**: cliente próprio REST + SSE (`src/lib/firebase.js`) —
+  MV3 proíbe script remoto e o repo é sem bundler.
 
 ```
-CELULAR (servidor :47615)        CHROMEBOOK (esta extensão, cliente)
-GET / -> banner          ◄────   varre a LAN, acha o celular
-POST /bind (X25519)      ◄────   TOFU: vincula ao 1o professor
-open_url (cifrado) ──────────►   abre a aba (chrome.tabs)
+CHROMEBOOK (esta extensão)        RTDB               APP (professor)
+exibe QR {id, pub, token}  ─────►  ◄───────────────  escaneia, grava bind
+stream SSE (cmd/state)     ◄─────  ◄───────────────  comandos cifrados
+executa, ack, deleta       ─────►
+report cifrado + presença  ─────►  ──────────────►   lista/abas no app
 ```
 
 Detalhes: [`docs/arquitetura.md`](docs/arquitetura.md) e
@@ -36,28 +44,44 @@ Detalhes: [`docs/arquitetura.md`](docs/arquitetura.md) e
 ```
 src/
 ├── manifest.json
-├── offscreen/     # orquestra descoberta + vínculo + short-poll
-├── background/    # service worker (chrome.tabs, alarms, reset/IP manual)
-├── popup/         # status do vínculo, "Desvincular", IP manual (fallback)
-├── lib/           # discovery.js, keypair.js (X25519), crypto.js (AES), client.js
-└── icons/
+├── offscreen/     # orquestra auth + pareamento + CloudClient (SSE)
+├── background/    # service worker (chrome.tabs, alarms, bloqueio, wallpaper)
+├── popup/         # QR de pareamento, status, "Desvincular", nome do PC
+├── pairing/       # QR em tela cheia
+├── blocked/       # página "Site bloqueado pelo professor"
+├── lib/           # firebase.js (REST+SSE), cloud-client.js, replay.js,
+│   │              # keypair.js (X25519), crypto.js (AES), protocol.js, rules.js
+│   └── vendor/    # qrcode.js (gerador de QR, MIT, vendorizado)
+firebase/          # espelho das Security Rules (canônico no app) + emuladores
+tests/             # rules, replay, firebase (unit) + rules-security (emulador)
 ```
 
 ## Instalação
 
-Requer **Chrome ≥ 144**. `chrome://extensions` → Modo do desenvolvedor →
-**Carregar sem compactação** → pasta `src/` (aceite o aviso de `http://*/*`,
-necessário para varrer a LAN). Passo a passo em
+Requer **Chrome ≥ 133**. `chrome://extensions` → Modo do desenvolvedor →
+**Carregar sem compactação** → pasta `src/`. Passo a passo em
 [`docs/instalacao.md`](docs/instalacao.md).
+
+## Testes
+
+```bash
+node --test tests/*.test.mjs          # unit (replay, firebase, rules)
+cd firebase && firebase emulators:exec --only database --project demo-test \
+  "cd .. && node --test tests/rules-security.test.mjs"   # Security Rules
+```
 
 ## Roteiro
 
-- [x] Descoberta automática do celular na LAN (varredura, sem QR)
-- [x] Vínculo exclusivo (TOFU) com X25519 + AES-256-GCM
-- [x] Comando **abrir URL**; reconexão automática (alarms)
-- [x] Fallback de IP manual + "Desvincular professor"
-- [ ] Robustez em redes grandes/segmentadas (hoje: faixas `/24` comuns)
-- [ ] Comandos futuros: bloquear tela, mensagem, fechar abas
+- [x] Transporte Firebase RTDB (REST + SSE, sem SDK) + Auth anônima
+- [x] Pareamento por **QR** (token one-time, rotacionado a cada uso)
+- [x] Vínculo exclusivo (TOFU) X25519 + AES-256-GCM ponta-a-ponta
+- [x] Comandos **abrir URL** / **fechar abas**; anti-replay persistido
+- [x] **Monitorar abas** (somente URLs/títulos, sem captura de tela)
+- [x] **Bloqueio de sites** (persiste offline) + página "Site bloqueado"
+- [x] **Papel de parede** da turma (`chrome.wallpaper`, só ChromeOS)
+- [x] **Nome do PC** editável no popup; **desvincular** com limpeza no banco
+- [ ] Teste de campo (professor + turma real)
+- [ ] Comandos futuros: bloquear tela, mensagem
 
 ## Licença
 

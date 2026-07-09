@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Parear com o professor — Controle de Aula</title>
+    <link rel="stylesheet" href="pairing.css" />
+  </head>
+  <body>
+    <main>
+      <h1>Controle de Aula</h1>
+      <p class="instrucao" id="instrucao">
+        Peça ao professor para escanear este QR com o app no celular:
+      </p>
+      <div class="qr" id="qr"><span class="dica">Gerando QR…</span></div>
+      <p class="nome" id="nome"></p>
+      <p class="dica" id="detalhe"></p>
+      <section class="sucesso" id="sucesso" hidden>
+        <p>✅ Pareado! Este PC agora está conectado ao professor.</p>
+        <p class="dica">Pode fechar esta aba.</p>
+      </section>
+    </main>
+    <script type="module" src="pairing.js"></script>
+  </body>
+</html>

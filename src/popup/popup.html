@@ -9,28 +9,40 @@
   <body>
     <header>
       <h1>Controle de Aula</h1>
-      <p class="status" id="status">Procurando o professor…</p>
+      <p class="status" id="status">Conectando…</p>
     </header>
 
     <main>
       <section id="conectado" hidden>
-        <p class="ok">✅ Conectado ao professor.</p>
+        <p class="ok" id="prof">✅ Conectado ao professor.</p>
       </section>
 
-      <section id="procurando">
-        <p class="passo">Procurando o celular do professor na rede…</p>
+      <section id="pareamento" hidden>
+        <p class="passo">Peça ao professor para escanear este QR no app:</p>
+        <div class="qr" id="qr"><span class="dica">Gerando QR…</span></div>
+        <button id="btn-tela-cheia">Abrir QR em tela cheia</button>
         <p class="dica" id="detalhe"></p>
-        <p class="dica">Funciona sozinho na mesma Wi-Fi. Se demorar, informe o IP
-          do celular (aparece no app):</p>
-        <input id="ip" type="text" inputmode="decimal" placeholder="ex.: 192.168.1.50" />
-        <button id="btn-ip">Usar este IP</button>
+      </section>
+
+      <section id="conectando" hidden>
+        <p class="passo">Conectando ao Firebase…</p>
+        <p class="dica" id="detalhe2"></p>
+      </section>
+
+      <section id="nome-pc">
+        <p class="passo">Nome deste PC</p>
+        <input id="nome" type="text" maxlength="40" placeholder="ex.: PC 07 — fundo da sala" />
+        <button id="btn-nome">Salvar nome</button>
+        <p class="dica">O professor vê este nome (a menos que ele já tenha
+          renomeado o PC no app).</p>
       </section>
 
       <button id="btn-reset" class="secundario">Desvincular professor</button>
     </main>
 
     <footer>
-      <small>O 1º professor que encontrar este PC fica vinculado a ele.</small>
+      <small>O vínculo é exclusivo: só o professor que escaneou o QR controla
+        este PC.</small>
     </footer>
 
     <script type="module" src="popup.js"></script>

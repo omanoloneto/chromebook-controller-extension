@@ -4,39 +4,51 @@
 
 ## Pré-requisitos
 
-- **Chrome ≥ 144** (ChromeOS ou desktop).
-- Chromebook e celular na **mesma Wi-Fi**, **sem client/AP isolation**.
+- **Chrome ≥ 133** (ChromeOS ou desktop).
+- **Internet** no Chromebook — o transporte é Firebase; não precisa estar na
+  mesma rede do celular do professor.
 
 ## Instalar
 
 1. `chrome://extensions` → ative o **Modo do desenvolvedor**.
 2. **Carregar sem compactação** → selecione a pasta **`src/`**.
-3. Aceite o aviso de permissão (a extensão precisa de `http://*/*` para varrer a
-   rede local e achar o celular do professor).
+3. As permissões de host são só os endpoints do Firebase (sem o antigo aviso
+   de "ler dados em todos os sites").
 
-## Como funciona (sem QR)
+## Como funciona (pareamento por QR)
 
-1. O professor abre o app no celular (ele vira servidor e mostra o IP).
-2. A extensão, sozinha, **varre a rede**, acha o celular e se **vincula** ao
-   **primeiro** professor encontrado (TOFU). O PC passa a aparecer na lista do app.
-3. O professor digita uma URL no app → abre no Chromebook.
+1. Instalada, a extensão autentica no Firebase (conta anônima) e o **popup
+   exibe um QR de pareamento** (há também um botão "Abrir QR em tela cheia").
+2. O professor abre o app no celular, toca em **escanear QR** e aponta a câmera
+   para a tela do Chromebook. Pronto: o PC fica **vinculado** àquele professor
+   (TOFU — vínculo exclusivo) e aparece na lista do app. É **1x por PC**.
+3. O professor digita uma URL no app → abre no Chromebook (de qualquer rede).
+4. Uma vez vinculado, o professor passa a ver **as abas abertas e as URLs
+   visitadas** neste Chromebook (somente URLs/títulos — **sem captura de tela**;
+   transparência: avise a turma/escola de que o monitoramento existe).
+5. O professor também pode **fechar abas**, **bloquear sites** (aparece a página
+   "Site bloqueado pelo professor" — o bloqueio persiste mesmo offline) e
+   **trocar o papel de parede** (só em ChromeOS).
+6. No popup dá para definir o **nome deste PC** (ex.: "PC 07"), que aparece na
+   lista do professor.
 
-O ícone fica verde quando conectado. **Não há pareamento manual** no caso comum.
+O ícone fica verde quando conectado.
 
-## Se não achar automaticamente
+## Se não conectar
 
-- Abra o popup → digite o **IP do celular** (mostrado no app) em "Usar este IP".
-- Confira: mesma Wi-Fi; rede **sem isolamento de cliente**; Chrome **≥ 144**.
-- Teste cru: abra `http://<ip-do-celular>:47615/` numa aba → deve responder um JSON
-  com `"app":"controle-de-aula"`.
+- Confira a **internet** do Chromebook.
+- O QR é de **uso único**: se o professor escaneou um QR antigo (foto/print),
+  abra o popup de novo — ele mostra o QR atual.
+- Estado "vínculo divergente": desvincule pelo popup e re-pareie.
 
-## Trocar de professor / reinstalar o app
+## Trocar de professor / professor reinstalou o app
 
-O PC fica vinculado a um professor. Para vincular a outro (ou se o app foi
-reinstalado), abra o popup → **"Desvincular professor"**.
+O PC fica vinculado a um professor. Para vincular a outro (ou se o app do
+professor foi reinstalado — a identidade dele muda), abra o popup →
+**"Desvincular professor"** → o QR reaparece → o professor escaneia de novo.
 
-## Local Network Access (LNA)
+## Privacidade
 
-Chrome 142+ exige permissão de rede local; extensões com `host_permissions` são
-isentas do prompt (corrigido para extensões no **Chrome 144**). Em **Chromebook
-gerenciado**, o admin pode liberar com a política `LocalNetworkAccessAllowedForUrls`.
+Ao desvincular, a extensão **apaga do banco** o relatório de abas, os acks e a
+presença deste PC. Os relatórios viajam **cifrados ponta-a-ponta** (só o
+celular do professor consegue abrir) — o Firebase/Google não vê o conteúdo.
