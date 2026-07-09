@@ -77,6 +77,14 @@ function updateBadge(state) {
 async function execOpenUrl({ url, newTab = true, focus = true }) {
   if (!isSafeHttpUrl(url)) return { ok: false, error: 'url_invalida' };
   try {
+    // Navegador fechado (pós "encerrar aula"): sem janela, chrome.tabs.create
+    // falha — reabre o Chrome com uma janela nova já na URL. A extensão segue
+    // viva sem janelas no ChromeOS (offscreen/SW não dependem delas).
+    const janelas = await chrome.windows.getAll({ windowTypes: ['normal'] });
+    if (janelas.length === 0) {
+      await chrome.windows.create({ url, focused: !!focus, state: 'maximized' });
+      return { ok: true };
+    }
     if (newTab) {
       await chrome.tabs.create({ url, active: !!focus });
     } else {

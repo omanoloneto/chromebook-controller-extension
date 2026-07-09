@@ -148,6 +148,10 @@ executa, grava o ack em `ack/{mesmo pushId}` e **deleta** o cmd.
 `broadcast` (turma toda) = selar e enfileirar o mesmo comando em **cada** device
 (envelopes diferem — cada sessão tem sua chave).
 
+Se o navegador estiver **fechado** (pós "encerrar aula"), o cliente **reabre o
+Chrome** com uma janela nova já na URL (`chrome.windows.create`) — a extensão
+continua viva sem janelas no ChromeOS.
+
 **`close_tabs`** — exatamente UM de `domain` | `url`. Fechar 0 abas ainda é
 `ack {ok:true}` (idempotente). Se fechar todas as abas da janela, o cliente abre
 uma aba vazia antes:
