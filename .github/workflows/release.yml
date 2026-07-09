@@ -1,0 +1,59 @@
+# Release automático: tag vX.Y.Z -> zip -> Chrome Web Store (API v2) -> GitHub Release.
+# Uso normal: scripts/release.sh X.Y.Z (valida tudo e cria a tag).
+# Secrets necessários: CWS_CLIENT_ID, CWS_CLIENT_SECRET, CWS_REFRESH_TOKEN,
+#                      CWS_EXTENSION_ID, CWS_PUBLISHER_ID (ver docs/instalacao.md).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write # criar a GitHub Release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Tag deve bater com a versão do manifest
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#v}"
+          MANIFEST_VERSION="$(jq -r .version src/manifest.json)"
+          if [ "$TAG_VERSION" != "$MANIFEST_VERSION" ]; then
+            echo "::error::tag v${TAG_VERSION} != manifest ${MANIFEST_VERSION} — use scripts/release.sh"
+            exit 1
+          fi
+
+      - name: Montar zip (conteúdo de src/ na raiz)
+        run: |
+          mkdir -p dist
+          ZIP_PATH="dist/controle-de-aula-${GITHUB_REF_NAME}.zip"
+          (cd src && zip -r "../$ZIP_PATH" . \
+            -x ".*" -x "*/.*" \
+            -x "icons/README.md" -x "icons/icon.svg")
+          unzip -l "$ZIP_PATH"
+          # manifest tem que estar na RAIZ do zip (erro clássico: pasta src/ embrulhada)
+          unzip -p "$ZIP_PATH" manifest.json | jq -e .version
+          echo "ZIP_PATH=$ZIP_PATH" >> "$GITHUB_ENV"
+
+      - name: Upload + publish na Chrome Web Store (API v2, mantém Unlisted)
+        uses: wdzeng/chrome-extension@v2
+        with:
+          extension-id: ${{ secrets.CWS_EXTENSION_ID }}
+          publisher-id: ${{ secrets.CWS_PUBLISHER_ID }}
+          client-id: ${{ secrets.CWS_CLIENT_ID }}
+          client-secret: ${{ secrets.CWS_CLIENT_SECRET }}
+          refresh-token: ${{ secrets.CWS_REFRESH_TOKEN }}
+          zip-path: ${{ env.ZIP_PATH }}
+          action: publish
+
+      - name: GitHub Release com o zip (arquivo/fallback)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" "$ZIP_PATH" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes

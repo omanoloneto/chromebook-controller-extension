@@ -1,6 +1,4 @@
-# Instalação — Extensão (desenvolvimento)
-
-> Ainda **não está na Chrome Web Store**. Instala-se como *unpacked*.
+# Instalação — Extensão
 
 ## Pré-requisitos
 
@@ -8,12 +6,57 @@
 - **Internet** no Chromebook — o transporte é Firebase; não precisa estar na
   mesma rede do celular do professor.
 
-## Instalar
+## Instalar (Chrome Web Store — recomendado, com auto-update)
+
+A extensão é publicada **não listada** na Chrome Web Store: só instala quem tem
+o link, e o **Chrome atualiza sozinho** (checa a cada ~5h; `chrome://extensions`
+→ "Atualizar" força na hora).
+
+1. Abra o link da extensão na Web Store (fornecido pelo professor/admin —
+   colocar aqui após a 1ª publicação).
+2. "Usar no Chrome". Pronto — sem modo desenvolvedor, sem pasta.
+
+### Migrando do modo desenvolvedor (unpacked)
+
+A versão da loja tem **ID de extensão diferente** → identidade/vínculo zeram:
+
+1. `chrome://extensions` → **remova** a versão "sem compactação".
+2. Instale pela loja (link acima).
+3. Abra o popup → **escaneie o QR de novo** com o app do professor (re-pareamento 1x).
+
+## Instalar (modo desenvolvedor — só p/ desenvolvimento)
+
+> Unpacked **nunca se auto-atualiza** — não usar em produção.
 
 1. `chrome://extensions` → ative o **Modo do desenvolvedor**.
 2. **Carregar sem compactação** → selecione a pasta **`src/`**.
 3. As permissões de host são só os endpoints do Firebase (sem o antigo aviso
    de "ler dados em todos os sites").
+
+## Publicar uma release (mantenedor)
+
+```bash
+scripts/release.sh 0.5.0
+```
+
+Valida (tree limpo, main, versão crescente), faz bump do `src/manifest.json`,
+commit `release: v0.5.0`, tag e push. A **GitHub Action**
+(`.github/workflows/release.yml`) zipa, sobe na Web Store (API v2, fica
+"pending review" — tipicamente 24–72h; unlisted também passa por review) e cria
+a GitHub Release com o zip.
+
+Setup 1x (segredos no repo): `CWS_CLIENT_ID`, `CWS_CLIENT_SECRET`,
+`CWS_REFRESH_TOKEN`, `CWS_EXTENSION_ID`, `CWS_PUBLISHER_ID` — via
+`gh secret set <NOME> -R omanoloneto/chromebook-controller-extension`.
+Passo a passo das credenciais (Cloud Console → Chrome Web Store API → OAuth
+client "Web application" com redirect p/ o OAuth Playground → refresh token com
+scope `chromewebstore`; consent screen **em "In production"**, senão o token
+expira em 7 dias): ver o plano de release ou
+https://developer.chrome.com/docs/webstore/using-api
+
+Gotchas: review pendente bloqueia novo upload (espere aprovar ou cancele a
+submissão); versão enviada "queima" mesmo se rejeitada (sempre crescente);
+API v1 morre em 15/out/2026 (este fluxo já usa a v2).
 
 ## Como funciona (pareamento por QR)
 

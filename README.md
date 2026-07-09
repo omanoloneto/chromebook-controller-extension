@@ -58,9 +58,16 @@ tests/             # rules, replay, firebase (unit) + rules-security (emulador)
 
 ## Instalação
 
-Requer **Chrome ≥ 133**. `chrome://extensions` → Modo do desenvolvedor →
-**Carregar sem compactação** → pasta `src/`. Passo a passo em
-[`docs/instalacao.md`](docs/instalacao.md).
+Requer **Chrome ≥ 133**. Instalação normal: **Chrome Web Store (não listada)**
+— link com o mantenedor; o Chrome **atualiza sozinho**. Modo desenvolvedor
+(`src/` sem compactação) só para desenvolvimento — unpacked não se
+auto-atualiza. Passo a passo em [`docs/instalacao.md`](docs/instalacao.md).
+
+## Releases
+
+`scripts/release.sh X.Y.Z` → tag → GitHub Action zipa e publica na Web Store
+(API v2) + cria GitHub Release. Detalhes/segredos em
+[`docs/instalacao.md`](docs/instalacao.md#publicar-uma-release-mantenedor).
 
 ## Testes
 
@@ -80,6 +87,8 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
 - [x] **Bloqueio de sites** (persiste offline) + página "Site bloqueado"
 - [x] **Papel de parede** da turma (`chrome.wallpaper`, só ChromeOS)
 - [x] **Nome do PC** editável no popup; **desvincular** com limpeza no banco
+- [x] **Auto-update**: Web Store não listada + release por tag (GitHub Action)
+- [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem
 
