@@ -184,6 +184,8 @@ async function executarComando(cmd) {
         jpegB64: cmd.payload?.jpegB64,
         hash: cmd.payload?.hash,
       });
+    case MessageType.SHOW_MESSAGE:
+      return exec(IPC.EXEC_SHOW_MESSAGE, cmd.payload);
     default:
       return { ok: false, error: 'tipo_desconhecido' };
   }

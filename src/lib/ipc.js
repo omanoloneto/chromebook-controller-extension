@@ -22,6 +22,7 @@ export const IPC = Object.freeze({
   EXEC_CLOSE_ALL_TABS: 'exec:closeAllTabs', // { closeWindows? }; resp { ok, error }
   EXEC_SET_RULES: 'exec:setRules', // { rev, rules }; resp { ok }
   EXEC_WALLPAPER: 'exec:wallpaper', // { jpegB64, hash }; resp { ok, error }
+  EXEC_SHOW_MESSAGE: 'exec:showMessage', // { title, body }; resp { ok, error }
 
   // offscreen -> service worker (relatório de abas para o professor)
   TABS_REPORT: 'tabs:report', // resp { report } (ver makeTabReport)

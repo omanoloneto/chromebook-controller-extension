@@ -147,6 +147,26 @@ async function execFecharTudo({ closeWindows = false } = {}) {
   }
 }
 
+// Notificação do sistema (usada no "PC do professor": aviso de aluno em site
+// proibido). Som = padrão do sistema para prioridade alta.
+async function execMostrarMensagem({ title, body }) {
+  if (chrome.notifications === undefined) {
+    return { ok: false, error: 'sem_notifications' };
+  }
+  try {
+    await chrome.notifications.create({
+      type: 'basic',
+      iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
+      title: String(title ?? 'Controle de Aula').slice(0, 100),
+      message: String(body ?? '').slice(0, 200),
+      priority: 2,
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
 // Aplica o snapshot de regras de bloqueio e varre as abas já abertas.
 async function execAplicarRegras({ rev, rules }) {
   const limpas = (Array.isArray(rules) ? rules : [])
@@ -356,6 +376,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case IPC.EXEC_WALLPAPER:
       execTrocarPapelDeParede(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_SHOW_MESSAGE:
+      execMostrarMensagem(msg).then(sendResponse);
       return true;
 
     case IPC.TABS_REPORT:

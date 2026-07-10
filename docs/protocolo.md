@@ -178,6 +178,15 @@ responde `ack {ok:false, error:"tipo_desconhecido"}` — inofensivo.
 { "v":1, "type":"close_all_tabs", "id":"a47", "payload":{ "closeWindows": true } }
 ```
 
+**`show_message`** (v0.4.2+) — notificação do sistema no Chromebook
+(`chrome.notifications`, priority 2, ícone da extensão; som = padrão do
+sistema). Usado pelo app para "apitar" no **PC do professor** quando um aluno
+acessa site proibido. Cliente < 0.4.2: `ack {ok:false, error:"tipo_desconhecido"}`.
+
+```json
+{ "v":1, "type":"show_message", "id":"a48", "payload":{ "title":"⚠ William", "body":"youtube.com" } }
+```
+
 **Ack**
 ```json
 { "type":"ack", "id":"a43", "ok":true }
@@ -305,4 +314,4 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   "Automatic clean-up" — manter OFF nesse caso.)
 
 ## 6. Tipos reservados (futuro)
-`lock_screen`, `unlock_screen`, `show_message`, `focus_mode`.
+`lock_screen`, `unlock_screen`, `focus_mode`.
