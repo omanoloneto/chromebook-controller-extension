@@ -12,8 +12,8 @@ A extensão é publicada **não listada** na Chrome Web Store: só instala quem 
 o link, e o **Chrome atualiza sozinho** (checa a cada ~5h; `chrome://extensions`
 → "Atualizar" força na hora).
 
-1. Abra o link da extensão na Web Store (fornecido pelo professor/admin —
-   colocar aqui após a 1ª publicação).
+1. Abra o link da extensão na Web Store:
+   **https://chromewebstore.google.com/detail/lhgjobopefkabgcifkkgmcnlmokjpjin**
 2. "Usar no Chrome". Pronto — sem modo desenvolvedor, sem pasta.
 
 ### Migrando do modo desenvolvedor (unpacked)

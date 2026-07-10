@@ -58,10 +58,11 @@ tests/             # rules, replay, firebase (unit) + rules-security (emulador)
 
 ## Instalação
 
-Requer **Chrome ≥ 133**. Instalação normal: **Chrome Web Store (não listada)**
-— link com o mantenedor; o Chrome **atualiza sozinho**. Modo desenvolvedor
-(`src/` sem compactação) só para desenvolvimento — unpacked não se
-auto-atualiza. Passo a passo em [`docs/instalacao.md`](docs/instalacao.md).
+Requer **Chrome ≥ 133**. Instalação normal:
+[**Chrome Web Store (não listada)**](https://chromewebstore.google.com/detail/lhgjobopefkabgcifkkgmcnlmokjpjin)
+— o Chrome **atualiza sozinho**. Modo desenvolvedor (`src/` sem compactação) só
+para desenvolvimento — unpacked não se auto-atualiza. Passo a passo em
+[`docs/instalacao.md`](docs/instalacao.md).
 
 ## Releases
 
