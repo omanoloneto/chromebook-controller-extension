@@ -62,6 +62,14 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # dele decifra; reinstalar o app torna o
                                     # histórico antigo indecifrável. Rules:
                                     # owner-only. Retenção: até apagar na UI.
+
+/backup/{teacherUid}/               # backup p/ troca de celular (SÓ o app).
+  keypair: "<blob PBKDF2+AES>"      # teacher_key.txt cifrado pelo PIN do prof
+                                    # (PBKDF2-HMAC-SHA256, salt no blob) — nem
+                                    # o banco abre; PIN errado/esquecido = inútil.
+  stores: "<envelope>"             # JSONs locais (turmas/nomes/regras/favoritos/
+                                    # prefs/aula) cifrados com a chave do
+                                    # histórico. Rules owner-only.
 ```
 
 **Presença:** o cliente REST/SSE não tem `onDisconnect`, então presença é

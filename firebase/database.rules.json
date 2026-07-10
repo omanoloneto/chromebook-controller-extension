@@ -84,6 +84,17 @@
       }
     },
 
+    "backup": {
+      "$tUid": {
+        ".read": "auth != null && auth.uid === $tUid",
+        ".write": "auth != null && auth.uid === $tUid",
+        "keypair": { ".validate": "newData.isString() && newData.val().length < 16384" },
+        "stores": { ".validate": "newData.isString() && newData.val().length < 1048576" },
+        "ts": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
+    },
+
     "history": {
       "$tUid": {
         ".read": "auth != null && auth.uid === $tUid",

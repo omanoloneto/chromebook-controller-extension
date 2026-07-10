@@ -209,6 +209,16 @@ test('histórico: só o dono lê/escreve', { skip }, async () => {
   await permitido(req('DELETE', '/history/uid-prof/1767369600000', { auth: PROF }));
 });
 
+test('backup: só o dono; estrutura restrita', { skip }, async () => {
+  await semear();
+  await permitido(req('PUT', '/backup/uid-prof/keypair', { auth: PROF, body: 'blob' }));
+  await permitido(req('PUT', '/backup/uid-prof/stores', { auth: PROF, body: 'env' }));
+  await negado(req('GET', '/backup/uid-prof', { auth: PROF2 }));
+  await negado(req('GET', '/backup/uid-prof', { auth: DEV }));
+  await negado(req('PUT', '/backup/uid-prof/keypair', { auth: PROF2, body: 'x' }));
+  await negado(req('PUT', '/backup/uid-prof/outra', { auth: PROF, body: 'x' }));
+});
+
 test('roster do professor: só o dono', { skip }, async () => {
   await semear();
   await permitido(req('PUT', '/teachers/uid-prof/devices/d1', { auth: PROF, body: true }));
