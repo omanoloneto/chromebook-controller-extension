@@ -189,6 +189,26 @@ test('wallpaper: dono escreve; device vinculado lê; sem vínculo não lê', { s
   await negado(req('GET', '/wallpapers/uid-prof', { auth: fakeToken('uid-dev2') }));
 });
 
+test('histórico: só o dono lê/escreve', { skip }, async () => {
+  await semear();
+  await permitido(
+    req('PUT', '/history/uid-prof/1767369600000/meta', { auth: PROF, body: 'envelope' }),
+  );
+  await permitido(
+    req('POST', '/history/uid-prof/1767369600000/ev', { auth: PROF, body: 'envelope' }),
+  );
+  await negado(req('GET', '/history/uid-prof', { auth: PROF2 }));
+  await negado(req('GET', '/history/uid-prof', { auth: DEV }));
+  await negado(
+    req('PUT', '/history/uid-prof/1767369600000/meta', { auth: PROF2, body: 'x' }),
+  );
+  // Estrutura restrita: chave fora de meta/ev é rejeitada.
+  await negado(
+    req('PUT', '/history/uid-prof/1767369600000/outra', { auth: PROF, body: 'x' }),
+  );
+  await permitido(req('DELETE', '/history/uid-prof/1767369600000', { auth: PROF }));
+});
+
 test('roster do professor: só o dono', { skip }, async () => {
   await semear();
   await permitido(req('PUT', '/teachers/uid-prof/devices/d1', { auth: PROF, body: true }));

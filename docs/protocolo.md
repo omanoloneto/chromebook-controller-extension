@@ -50,6 +50,18 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   devices/{deviceId}: true          # roster que o app escuta
 
 /wallpapers/{teacherUid}/ {hash, jpeg, ts}   # jpeg = base64 em claro (risco aceito)
+
+/history/{teacherUid}/{sessionId}/  # histórico de aulas (OPCIONAL, gravado
+  meta: "<envelope>"                # pelo APP; a extensão não participa).
+  ev/{pushId}: "<envelope>"         # sessionId = epoch-ms do início da aula.
+                                    # meta = {turma, inicio, fim?, alunos[]};
+                                    # ev = {aluno, eventos:[{url,title,ts}]}.
+                                    # TUDO cifrado com chave derivada da
+                                    # keypair do professor (HKDF,
+                                    # info='history-key-v1') — só o celular
+                                    # dele decifra; reinstalar o app torna o
+                                    # histórico antigo indecifrável. Rules:
+                                    # owner-only. Retenção: até apagar na UI.
 ```
 
 **Presença:** o cliente REST/SSE não tem `onDisconnect`, então presença é
@@ -309,6 +321,10 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - **Riscos aceitos:** blob do wallpaper em claro no banco; metadados de
   pareamento (pubkeys, labels) em claro; ciphertext do último `report` repousa
   no banco (E2E — só a chave do professor abre; deletado ao desvincular).
+- **Histórico de aulas (retenção):** o app grava em `/history` os acessos de
+  alunos VINCULADOS durante aulas ativas — cifrado (só o professor decifra),
+  apagável na UI (por aula, por aluno ou tudo). Recomenda-se transparência
+  com escola/responsáveis.
 - **Requisitos do console:** Auth anônima ON; rules publicadas. (Auth padrão
   não apaga contas anônimas; só com upgrade p/ Identity Platform existe
   "Automatic clean-up" — manter OFF nesse caso.)

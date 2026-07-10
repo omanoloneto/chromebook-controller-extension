@@ -84,6 +84,20 @@
       }
     },
 
+    "history": {
+      "$tUid": {
+        ".read": "auth != null && auth.uid === $tUid",
+        ".write": "auth != null && auth.uid === $tUid",
+        "$sessionId": {
+          "meta": { ".validate": "newData.isString() && newData.val().length < 65536" },
+          "ev": {
+            "$pushId": { ".validate": "newData.isString() && newData.val().length < 65536" }
+          },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
     "wallpapers": {
       "$tUid": {
         ".write": "auth != null && auth.uid === $tUid",
