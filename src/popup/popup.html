@@ -10,10 +10,15 @@
     <header>
       <h1>Controle de Aula</h1>
       <p class="status" id="status">Conectando…</p>
+      <button id="btn-reconectar" class="icone" title="Reconectar ao Firebase">⟳</button>
     </header>
 
     <main>
       <section id="conectado" hidden>
+        <div class="unidade">
+          <span class="unidade-rotulo">Unidade</span>
+          <span class="unidade-numero" id="numero">—</span>
+        </div>
         <p class="ok" id="prof">✅ Conectado ao professor.</p>
       </section>
 
@@ -33,14 +38,6 @@
       <section id="conectando" hidden>
         <p class="passo">Conectando ao Firebase…</p>
         <p class="dica" id="detalhe2"></p>
-      </section>
-
-      <section id="nome-pc">
-        <p class="passo">Nome deste PC</p>
-        <input id="nome" type="text" maxlength="40" placeholder="ex.: PC 07 — fundo da sala" />
-        <button id="btn-nome">Salvar nome</button>
-        <p class="dica">O professor vê este nome (a menos que ele já tenha
-          renomeado o PC no app).</p>
       </section>
 
       <button id="btn-reset" class="secundario">Desvincular professor</button>

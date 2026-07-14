@@ -31,8 +31,14 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   meta/ {uid, pub, label, v:4}      # claro; escrito pela EXTENSÃO (uid = Auth anônima)
   pairing/ {token}                  # token one-time do QR; ninguém lê (só as rules);
                                     # rotacionado após cada bind e cada unbind
-  bind/ {teacherUid, teacherPub, teacherName, token, ts}
-                                    # claro; escrito pelo PROFESSOR ao escanear (TOFU)
+  bind/ {teacherUid, teacherPub, teacherName, token, ts, numero?}
+                                    # claro; escrito pelo PROFESSOR ao escanear (TOFU).
+                                    # numero (app >= 0.13) = unidade 1..9999 na ordem
+                                    # de pareamento DESTE professor; re-parear o mesmo
+                                    # PC mantém o número. A extensão exibe "Unidade N"
+                                    # grande no popup e assume "Unidade N" como label
+                                    # (meta/label). Ausente (app antigo): popup cai
+                                    # para o label.
   state/
     rules: "<envelope>"             # snapshot de regras (substitui; PC atrasado lê ao conectar)
     wallpaper: "<envelope>"         # comando set_wallpaper vigente
@@ -96,15 +102,18 @@ Fluxo:
    próprio nó.
 2. **Professor escaneia** o QR com o app. O app deriva a chave de sessão
    (X25519+HKDF, idêntico ao v3) e grava
-   `bind = {teacherUid, teacherPub, teacherName, token, ts}`. As **rules**
+   `bind = {teacherUid, teacherPub, teacherName, token, ts, numero}` (`numero`
+   = unidade sequencial deste professor, ver §1). As **rules**
    validam: `token` igual ao `pairing/token` atual **e** (nó `bind` vazio **ou**
    mesmo `teacherUid`) — **TOFU imposto no servidor**. Em seguida o app grava o
    roster e o estado vigente (`state/rules` sempre, `state/wallpaper` se
    houver; `state/classview` é gravado se este device for o telão, ou
    **deletado** se não for — mata um snapshot órfão de pareamento anterior).
 3. **Extensão** vê o `bind` aparecer no stream: confere o token (defesa em
-   profundidade), **fixa** `teacherPub` (TOFU), deriva a chave de sessão e
-   **rotaciona** `pairing/token` — o QR escaneado morre. Começa o loop normal.
+   profundidade), **fixa** `teacherPub` (TOFU), guarda o `numero`, assume
+   `Unidade {numero}` como label (atualiza `meta/label`), deriva a chave de
+   sessão e **rotaciona** `pairing/token` — o QR escaneado morre. Começa o
+   loop normal.
 
 **Derivação (igual ao v3, paridade testada `keypair.js` ↔ `keypair.dart`):**
 `sessão = HKDF-SHA256( X25519(priv, peerPub), salt="controle-de-aula", info="session-key-v3", 32 bytes )`.

@@ -145,6 +145,8 @@ function waitForBind(id, token) {
           teacherUid: data.teacherUid,
           teacherPub: data.teacherPub,
           teacherName: data.teacherName ?? 'Professor',
+          // Número da unidade atribuído pelo app (app >= 0.13; ausente = null).
+          numero: typeof data.numero === 'number' ? data.numero : null,
         });
       },
       onDown: () => {},
@@ -222,6 +224,19 @@ async function mainLoop() {
         console.log('[CdA] pareado com', binding.teacherName);
       }
 
+      // Unidade N vira o label do PC (o app mostra o mesmo nome por padrão).
+      if (typeof binding.numero === 'number') {
+        const label = `Unidade ${binding.numero}`;
+        if (id.label !== label) {
+          id.label = label;
+          const kp = await storeGet(STORAGE_KEYPAIR);
+          if (kp) await storeSet(STORAGE_KEYPAIR, { ...kp, label });
+          await fb
+            .patch(`/devices/${id.deviceId}/meta`, { label })
+            .catch(() => {});
+        }
+      }
+
       const teacherPubKey = await importPublicRaw(pubFromB64url(binding.teacherPub));
       const sessionKey = await deriveSessionKey(id.privKey, teacherPubKey);
 
@@ -264,7 +279,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== TARGET_OFFSCREEN) return false;
   (async () => {
     if (msg.cmd === IPC.OFF_RESTART) {
-      identity = null; // força reler o keypair (ex.: label renomeado)
+      identity = null; // força reler o keypair
+      // Reconexão COMPLETA (botão ↻ do popup): derruba a sessão Firebase e
+      // re-autentica do zero — cobre token/estado preso após queda de rede.
+      fb?.stop();
+      fb = null;
       bindWaitCancel?.();
       currentClient?.stop(); // faz o run() retornar -> o loop recomeça
       sendResponse({ ok: true });

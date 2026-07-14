@@ -3,10 +3,10 @@
 
 export const IPC = Object.freeze({
   // popup -> service worker
-  GET_STATE: 'state:get', // resp: { state, detail, teacher, label }
+  GET_STATE: 'state:get', // resp: { state, detail, teacher, label, numero }
   GET_PAIRING: 'pairing:get', // resp: { deviceId, pub, token, label } (dados do QR)
   RESET_BIND: 'bind:reset', // desvincular professor (limpa RTDB + storage)
-  SET_LABEL: 'label:set', // { label } nome deste PC (vai no meta/label)
+  RECONNECT: 'conn:reconnect', // botão ↻: derruba e refaz a conexão Firebase
 
   // service worker -> offscreen
   OFF_RESTART: 'off:restart', // (re)inicia o loop de conexão (ex.: label novo)
@@ -34,7 +34,7 @@ export const IPC = Object.freeze({
 
 export const TARGET_OFFSCREEN = 'offscreen';
 export const STORAGE_KEYPAIR = 'keypair'; // {privJwk, pub, deviceId, label}
-export const STORAGE_BINDING = 'binding'; // {teacherUid, teacherPub, teacherName}
+export const STORAGE_BINDING = 'binding'; // {teacherUid, teacherPub, teacherName, numero?}
 export const STORAGE_PAIRING = 'pairing'; // {token} (one-time, vai no QR)
 export const STORAGE_AUTH = 'fbauth'; // {uid, refreshToken} (Auth anônima)
 export const STORAGE_REPLAY = 'replay'; // {cmd:{sid,seq}, rulesRev, wallpaperHash, classviewRev}

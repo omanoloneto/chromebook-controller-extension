@@ -130,6 +130,25 @@ test('bind: exige token atual; TOFU bloqueia 2º professor', { skip }, async () 
       body: { teacherUid: 'uid-prof', teacherPub: 'PP', teacherName: 'P', token: 'tok-atual', ts: 3 },
     }),
   );
+  // numero da unidade: inteiro 1..9999 ok; string/zero negados.
+  await permitido(
+    req('PUT', '/devices/d1/bind', {
+      auth: PROF,
+      body: { teacherUid: 'uid-prof', teacherPub: 'PP', teacherName: 'P', token: 'tok-atual', ts: 4, numero: 7 },
+    }),
+  );
+  await negado(
+    req('PUT', '/devices/d1/bind', {
+      auth: PROF,
+      body: { teacherUid: 'uid-prof', teacherPub: 'PP', teacherName: 'P', token: 'tok-atual', ts: 5, numero: 'sete' },
+    }),
+  );
+  await negado(
+    req('PUT', '/devices/d1/bind', {
+      auth: PROF,
+      body: { teacherUid: 'uid-prof', teacherPub: 'PP', teacherName: 'P', token: 'tok-atual', ts: 6, numero: 0 },
+    }),
+  );
   // Device pode desfazer (unbind).
   await permitido(req('DELETE', '/devices/d1/bind', { auth: DEV }));
 });

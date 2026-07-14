@@ -95,6 +95,9 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
 - [x] **Visão da turma no telão** (v0.4.3): página com a lista de PCs e a aba
       ativa de cada um — snapshot agregado e re-cifrado pelo app
       (`set_class_view`); o popup ganha "📺 Ver a turma" no PC do professor
+- [x] **Número da unidade** (v0.4.5): popup mostra grande o número que o app
+      atribui no pareamento (`bind.numero`); label vira "Unidade N"; sem
+      renomear pelo popup; botão ↻ de reconectar no cantinho
 - [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem

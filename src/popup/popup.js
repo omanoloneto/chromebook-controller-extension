@@ -1,5 +1,5 @@
-// Popup — status do vínculo, QR de pareamento, renomear PC e desvincular.
-// No PC do professor (telão), oferece também a página "Ver a turma".
+// Popup — número da unidade em destaque, status do vínculo, QR de pareamento,
+// reconectar (↻) e desvincular. No telão, oferece a página "Ver a turma".
 
 import { IPC, STORAGE_CLASSVIEW } from '../lib/ipc.js';
 import qrcode from '../lib/vendor/qrcode.js';
@@ -10,14 +10,14 @@ const el = {
   detalhe: document.getElementById('detalhe'),
   detalhe2: document.getElementById('detalhe2'),
   conectado: document.getElementById('conectado'),
+  numero: document.getElementById('numero'),
   prof: document.getElementById('prof'),
   pareamento: document.getElementById('pareamento'),
   conectando: document.getElementById('conectando'),
   qr: document.getElementById('qr'),
   btnTelaCheia: document.getElementById('btn-tela-cheia'),
   btnReset: document.getElementById('btn-reset'),
-  nome: document.getElementById('nome'),
-  btnNome: document.getElementById('btn-nome'),
+  btnReconectar: document.getElementById('btn-reconectar'),
   telao: document.getElementById('telao'),
   btnTurma: document.getElementById('btn-turma'),
 };
@@ -41,6 +41,18 @@ function render(state, detail, teacher) {
   if (detail !== undefined) {
     el.detalhe.textContent = detail ?? '';
     el.detalhe2.textContent = detail ?? '';
+  }
+}
+
+// Número grande: numero do bind (app >= 0.13); PCs pareados antes ainda não
+// têm — cai para o label do PC até re-parear.
+function renderNumero(numero, label) {
+  if (typeof numero === 'number') {
+    el.numero.textContent = String(numero);
+    el.numero.classList.remove('texto');
+  } else {
+    el.numero.textContent = label ?? '—';
+    el.numero.classList.add('texto');
   }
 }
 
@@ -77,6 +89,19 @@ el.btnTelaCheia.addEventListener('click', () => {
   window.close();
 });
 
+// ---- Reconectar (↻): derruba e refaz a conexão Firebase --------------------
+
+el.btnReconectar.addEventListener('click', async () => {
+  el.btnReconectar.disabled = true;
+  el.btnReconectar.classList.add('girando');
+  render('connecting', 'reconectando…');
+  await chrome.runtime.sendMessage({ cmd: IPC.RECONNECT }).catch(() => {});
+  setTimeout(() => {
+    el.btnReconectar.disabled = false;
+    el.btnReconectar.classList.remove('girando');
+  }, 2000);
+});
+
 // ---- Telão: botão "Ver a turma" (presença do snapshot = papel de telão) ----
 
 async function atualizarTelao() {
@@ -102,24 +127,13 @@ el.btnReset.addEventListener('click', async () => {
   render('pairing');
 });
 
-el.btnNome.addEventListener('click', async () => {
-  const label = el.nome.value.trim();
-  if (!label) return;
-  el.btnNome.disabled = true;
-  const res = await chrome.runtime
-    .sendMessage({ cmd: IPC.SET_LABEL, label })
-    .catch(() => null);
-  el.status.textContent = res?.ok ? 'Nome salvo — reconectando…' : 'Não deu para salvar o nome.';
-  el.btnNome.disabled = false;
-});
-
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state, msg.detail, msg.teacher);
 });
 
 chrome.runtime.sendMessage({ cmd: IPC.GET_STATE }).then((r) => {
   render(r?.state ?? 'connecting', undefined, r?.teacher);
-  if (r?.label) el.nome.value = r.label;
+  renderNumero(r?.numero ?? null, r?.label);
 });
 
 // Enquanto o popup está em pareamento, o token pode rotacionar (QR usado).

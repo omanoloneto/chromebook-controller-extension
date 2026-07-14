@@ -5,6 +5,7 @@ import {
   IPC,
   TARGET_OFFSCREEN,
   STORAGE_KEYPAIR,
+  STORAGE_BINDING,
   STORAGE_PAIRING,
   STORAGE_NAVLOG,
   STORAGE_RULES,
@@ -367,15 +368,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case IPC.GET_STATE:
       chrome.storage.local
-        .get(STORAGE_KEYPAIR)
+        .get([STORAGE_KEYPAIR, STORAGE_BINDING])
         .then((o) =>
           sendResponse({
             state: lastState,
             teacher: lastTeacher,
             label: o[STORAGE_KEYPAIR]?.label ?? null,
+            numero: o[STORAGE_BINDING]?.numero ?? null,
           }),
         )
-        .catch(() => sendResponse({ state: lastState, teacher: lastTeacher, label: null }));
+        .catch(() =>
+          sendResponse({ state: lastState, teacher: lastTeacher, label: null, numero: null }),
+        );
       return true;
 
     case IPC.EXEC_OPEN_URL:
@@ -412,16 +416,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
         .catch(() => sendResponse({ report: null }));
       return true;
 
-    case IPC.SET_LABEL:
+    case IPC.RECONNECT:
       (async () => {
-        const label = String(msg.label ?? '').trim().slice(0, 40);
-        const kp = (await chrome.storage.local.get(STORAGE_KEYPAIR))[STORAGE_KEYPAIR];
-        if (!kp || !label) {
-          sendResponse({ ok: false });
-          return;
-        }
-        kp.label = label;
-        await chrome.storage.local.set({ [STORAGE_KEYPAIR]: kp });
+        // Botão ↻ do popup: garante o offscreen e refaz a conexão do zero
+        // (re-auth + streams novos) — recuperação manual pós-queda de rede.
         await ensureOffscreen();
         await tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
         sendResponse({ ok: true });

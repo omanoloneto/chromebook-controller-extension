@@ -29,6 +29,7 @@
           "teacherName": { ".validate": "newData.isString() && newData.val().length <= 60" },
           "token":       { ".validate": "newData.isString() && newData.val().length <= 64" },
           "ts":          { ".validate": "newData.isNumber()" },
+          "numero":      { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 9999" },
           "$other":      { ".validate": false }
         },
 
