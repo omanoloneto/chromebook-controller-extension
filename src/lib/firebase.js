@@ -18,6 +18,22 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 60000;
 
+/// Códigos do Secure Token que significam "esta conta MORREU" — só aí vale
+/// criar conta anônima nova. Erro de rede, 5xx ou resposta de portal cativo
+/// NÃO entram: cair para signUp nesses casos troca o uid, e o uid antigo está
+/// pinado em meta/uid nas rules (first-write-wins) — o device ficaria com
+/// permission-denied PARA SEMPRE (visto em queda de energia na escola: a rede
+/// volta "meio viva" e o DNS/portal devolve lixo HTTP 200 antes da internet
+/// real subir).
+const AUTH_DEAD_CODES = new Set([
+  'INVALID_REFRESH_TOKEN',
+  'TOKEN_EXPIRED',
+  'USER_NOT_FOUND',
+  'USER_DISABLED',
+  'INVALID_GRANT',
+  'MISSING_REFRESH_TOKEN',
+]);
+
 /// Interpreta um evento SSE do RTDB — puro, testável (tests/firebase.test.mjs).
 /// Retorna { type, path?, data? } ou null para eventos ignoráveis/malformados.
 export function parseStreamEvent(eventName, dataText) {
@@ -79,8 +95,9 @@ export class FirebaseSession {
   // ---- Auth -----------------------------------------------------------------
 
   /// Restaura a conta anônima persistida (refresh) ou cria uma nova (signUp).
-  /// Lança se a conta persistida morreu (INVALID_REFRESH_TOKEN etc.) E o
-  /// signUp novo também falhar.
+  /// Só cria conta nova se NÃO havia conta salva ou se ela morreu de verdade
+  /// (`authDead` — códigos definitivos do Secure Token). Falha transitória
+  /// (rede/5xx/portal cativo) LANÇA — o mainLoop do offscreen retenta.
   async signIn() {
     const saved = (await this.loadAuth?.()) ?? null;
     if (saved?.refreshToken) {
@@ -88,8 +105,9 @@ export class FirebaseSession {
         await this._refresh(saved.refreshToken);
         return this.uid;
       } catch (e) {
+        if (!e?.authDead) throw e; // transitório: NUNCA abandonar o uid pinado
         // Conta morta (ex.: auto-delete de anônimas) — identidade nova.
-        console.warn('[CdA] refresh falhou, criando conta anônima nova:', e?.message);
+        console.warn('[CdA] conta anônima morta, criando nova:', e?.message);
       }
     }
     const res = await this.fetch(
@@ -101,7 +119,12 @@ export class FirebaseSession {
       },
     );
     if (!res.ok) throw new Error(`signup_http_${res.status}`);
-    const data = await res.json();
+    const data = await res.json().catch(() => null);
+    if (!data?.localId || !data.idToken || !data.refreshToken) {
+      // Portal cativo/DNS sequestrado devolvendo lixo com HTTP 200: não é uma
+      // conta — e principalmente NÃO pode sobrescrever o storage com undefined.
+      throw new Error('signup_resposta_invalida');
+    }
     this.uid = data.localId;
     this.idToken = data.idToken;
     this._refreshToken = data.refreshToken;
@@ -118,8 +141,22 @@ export class FirebaseSession {
         refreshToken ?? this._refreshToken,
       )}`,
     });
-    if (!res.ok) throw new Error(`refresh_http_${res.status}`);
-    const data = await res.json();
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      // Secure Token responde {error:{message:'TOKEN_EXPIRED',...}} (às vezes
+      // com sufixo ': detalhe'); o emulador usa {error:'...'} plano.
+      const code = String(body?.error?.message ?? body?.error ?? '')
+        .split(':')[0]
+        .trim();
+      const err = new Error(`refresh_http_${res.status}${code ? `_${code}` : ''}`);
+      err.status = res.status;
+      err.authDead = res.status === 400 && AUTH_DEAD_CODES.has(code);
+      throw err;
+    }
+    const data = await res.json().catch(() => null);
+    if (!data?.user_id || !data.id_token || !data.refresh_token) {
+      throw new Error('refresh_resposta_invalida'); // transitório (portal cativo)
+    }
     this.uid = data.user_id;
     this.idToken = data.id_token;
     this._refreshToken = data.refresh_token;
@@ -214,12 +251,14 @@ export class FirebaseSession {
       closed: false,
       _es: null,
       _watchdog: null,
+      _reconnectTimer: null,
       _backoffMs: BACKOFF_MIN_MS,
       _lastEventAt: 0,
 
       close() {
         this.closed = true;
         clearInterval(this._watchdog);
+        clearTimeout(this._reconnectTimer);
         this._es?.close();
         session._streams.delete(this);
       },
@@ -228,13 +267,27 @@ export class FirebaseSession {
         if (this.closed) return;
         onDown?.(motivo);
         this._es?.close();
+        this._es = null;
+        // Um agendamento por vez: _reconnect pode chegar em rajada (erro SSE +
+        // refresh + watchdog) — dois timers criariam dois EventSource vivos no
+        // mesmo handle (socket vazado entregando evento em dobro).
+        if (this._reconnectTimer) return;
         const delay = this._backoffMs;
         this._backoffMs = Math.min(this._backoffMs * 2, BACKOFF_MAX_MS);
-        setTimeout(() => this._connect(), delay);
+        // Backoff no teto = queda longa (ex.: falta de luz). O idToken pode
+        // ter expirado com a rede fora — EventSource novo com token velho é
+        // 401 mudo (onerror sem status), reconectaria para sempre. Renova
+        // junto: no sucesso o token novo entra na URL da próxima conexão.
+        if (delay >= BACKOFF_MAX_MS) session._refresh().catch(() => {});
+        this._reconnectTimer = setTimeout(() => {
+          this._reconnectTimer = null;
+          this._connect();
+        }, delay);
       },
 
       _connect() {
         if (this.closed) return;
+        this._es?.close(); // nunca dois sockets no mesmo handle
         const es = new session.EventSourceImpl(session._url(path));
         this._es = es;
         this._lastEventAt = Date.now();

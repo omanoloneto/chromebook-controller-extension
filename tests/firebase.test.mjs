@@ -123,6 +123,85 @@ test('refresh morto (conta apagada) cai para signUp novo', async () => {
   fb.stop();
 });
 
+// ---- Volta da queda de energia: NUNCA abandonar a conta por erro transitório.
+// meta/uid é first-write-wins nas rules: trocar de uid à toa = device com
+// permission-denied para sempre.
+
+test('refresh 5xx (rede meio viva) NÃO cria conta nova — lança e preserva o storage', async () => {
+  let salvo = 'intocado';
+  const fetchImpl = mockFetch([['/v1/token', { status: 503, body: null }]]);
+  const fb = new FirebaseSession({
+    apiKey: 'k',
+    databaseURL: 'https://x.firebaseio.com',
+    loadAuth: async () => ({ uid: 'uid1', refreshToken: 'r1' }),
+    saveAuth: async (a) => {
+      salvo = a;
+    },
+    fetchImpl,
+  });
+  await assert.rejects(() => fb.signIn(), /refresh_http_503/);
+  assert.ok(fetchImpl.chamadas.every((c) => !c.url.includes('signUp')));
+  assert.equal(salvo, 'intocado');
+  fb.stop();
+});
+
+test('refresh 200 com lixo (portal cativo/DNS sequestrado) NÃO cria conta nova', async () => {
+  let salvo = 'intocado';
+  const fetchImpl = async (url) => {
+    if (url.includes('/v1/token')) {
+      // Portal devolve HTML com HTTP 200: json() explode.
+      return { ok: true, status: 200, json: async () => JSON.parse('<html>') };
+    }
+    throw new Error('não deveria chegar aqui: ' + url);
+  };
+  const fb = new FirebaseSession({
+    apiKey: 'k',
+    databaseURL: 'https://x.firebaseio.com',
+    loadAuth: async () => ({ uid: 'uid1', refreshToken: 'r1' }),
+    saveAuth: async (a) => {
+      salvo = a;
+    },
+    fetchImpl,
+  });
+  await assert.rejects(() => fb.signIn(), /refresh_resposta_invalida/);
+  assert.equal(salvo, 'intocado');
+  fb.stop();
+});
+
+test('refresh 400 no formato real da API ({error:{message}}) cai para signUp', async () => {
+  const fb = new FirebaseSession({
+    apiKey: 'k',
+    databaseURL: 'https://x.firebaseio.com',
+    loadAuth: async () => ({ uid: 'morto', refreshToken: 'rip' }),
+    saveAuth: async () => {},
+    fetchImpl: mockFetch([
+      ['/v1/token', { status: 400, body: { error: { message: 'TOKEN_EXPIRED : detalhe' } } }],
+      [
+        'accounts:signUp',
+        { body: { localId: 'novo', idToken: 't', refreshToken: 'r', expiresIn: '3600' } },
+      ],
+    ]),
+  });
+  assert.equal(await fb.signIn(), 'novo');
+  fb.stop();
+});
+
+test('signUp com resposta inválida lança — nunca persiste undefined', async () => {
+  let salvo = 'intocado';
+  const fb = new FirebaseSession({
+    apiKey: 'k',
+    databaseURL: 'https://x.firebaseio.com',
+    loadAuth: async () => null,
+    saveAuth: async (a) => {
+      salvo = a;
+    },
+    fetchImpl: mockFetch([['accounts:signUp', { body: { pagina: '<html>' } }]]),
+  });
+  await assert.rejects(() => fb.signIn(), /signup_resposta_invalida/);
+  assert.equal(salvo, 'intocado');
+  fb.stop();
+});
+
 test('REST 401 renova o token e retenta uma vez', async () => {
   let deu401 = false;
   const fetchImpl = async (url, opts) => {

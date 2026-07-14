@@ -98,6 +98,9 @@ async function rotateToken(id) {
 
 async function ensureFirebase() {
   if (fb?.idToken) return fb;
+  // Sessão que nunca autenticou (signIn lançou no meio): mata o timer de
+  // refresh órfão antes de recriar — senão cada retry do mainLoop vaza um.
+  fb?.stop();
   fb = new FirebaseSession({
     apiKey: firebaseConfig.apiKey,
     databaseURL: firebaseConfig.databaseURL,
