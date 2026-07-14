@@ -167,7 +167,12 @@ test('state: só o professor vinculado; chaves limitadas', { skip }, async () =>
   await semear({ comBind: true });
   await permitido(req('PUT', '/devices/d1/state/rules', { auth: PROF, body: 'env' }));
   await permitido(req('PUT', '/devices/d1/state/wallpaper', { auth: PROF, body: 'env' }));
+  await permitido(req('PUT', '/devices/d1/state/classview', { auth: PROF, body: 'env' }));
   await negado(req('PUT', '/devices/d1/state/rules', { auth: DEV, body: 'forja' }));
+  await negado(req('PUT', '/devices/d1/state/classview', { auth: DEV, body: 'forja' }));
+  await negado(req('PUT', '/devices/d1/state/classview', { auth: PROF2, body: 'forja' }));
+  // "Escrever null" = DELETE: caminho usado ao desmarcar o PC do professor.
+  await permitido(req('DELETE', '/devices/d1/state/classview', { auth: PROF }));
   await negado(req('PUT', '/devices/d1/state/outra', { auth: PROF, body: 'x' }));
 });
 

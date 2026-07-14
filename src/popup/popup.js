@@ -1,6 +1,7 @@
 // Popup — status do vínculo, QR de pareamento, renomear PC e desvincular.
+// No PC do professor (telão), oferece também a página "Ver a turma".
 
-import { IPC } from '../lib/ipc.js';
+import { IPC, STORAGE_CLASSVIEW } from '../lib/ipc.js';
 import qrcode from '../lib/vendor/qrcode.js';
 import { makeQrPayload } from '../lib/protocol.js';
 
@@ -17,6 +18,8 @@ const el = {
   btnReset: document.getElementById('btn-reset'),
   nome: document.getElementById('nome'),
   btnNome: document.getElementById('btn-nome'),
+  telao: document.getElementById('telao'),
+  btnTurma: document.getElementById('btn-turma'),
 };
 
 let qrTimer = null;
@@ -73,6 +76,23 @@ el.btnTelaCheia.addEventListener('click', () => {
   chrome.tabs.create({ url: chrome.runtime.getURL('pairing/pairing.html') });
   window.close();
 });
+
+// ---- Telão: botão "Ver a turma" (presença do snapshot = papel de telão) ----
+
+async function atualizarTelao() {
+  const o = await chrome.storage.local.get(STORAGE_CLASSVIEW).catch(() => ({}));
+  el.telao.hidden = !o[STORAGE_CLASSVIEW];
+}
+
+el.btnTurma.addEventListener('click', () => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('turma/turma.html') });
+  window.close();
+});
+
+chrome.storage.onChanged.addListener((changes, area) => {
+  if (area === 'local' && STORAGE_CLASSVIEW in changes) atualizarTelao();
+});
+atualizarTelao();
 
 el.btnReset.addEventListener('click', async () => {
   el.btnReset.disabled = true;

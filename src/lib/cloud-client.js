@@ -6,7 +6,7 @@
 
 import { importKey, seal, open } from './crypto.js';
 import { ReplayGuard } from './replay.js';
-import { MessageType, PROTOCOL_VERSION } from './protocol.js';
+import { MessageType, PROTOCOL_VERSION, parseClassView } from './protocol.js';
 
 const PRESENCE_MS = 25000; // heartbeat de presença (app considera offline >60s)
 const REPORT_TICK_MS = 5000; // frequência de checagem do snapshot de abas
@@ -17,8 +17,8 @@ const MAX_ACKS = 20; // poda dos próprios acks não consumidos
 export class CloudClient {
   /// `fb`: FirebaseSession autenticada. `teacher`: {teacherUid, teacherPub}
   /// pinados (TOFU). `loadReplay`/`saveReplay`: persistem o estado anti-replay
-  /// {cmd:{sid,seq}, rulesRev, wallpaperHash} — obrigatório: reconexão SSE
-  /// re-entrega o nó inteiro e re-executaria comandos.
+  /// {cmd:{sid,seq}, rulesRev, wallpaperHash, classviewRev} — obrigatório:
+  /// reconexão SSE re-entrega o nó inteiro e re-executaria comandos.
   constructor({ fb, deviceId, sessionKey, teacher, onCommand, getReport, onState, loadReplay, saveReplay }) {
     this.fb = fb;
     this.base = `/devices/${deviceId}`;
@@ -37,6 +37,7 @@ export class CloudClient {
     this.cmdGuard = null;
     this.rulesRev = 0;
     this.wallpaperHash = null;
+    this.classviewRev = 0;
 
     this._resolve = null;
     this._stream = null;
@@ -66,6 +67,7 @@ export class CloudClient {
         cmd: this.cmdGuard.toJSON(),
         rulesRev: this.rulesRev,
         wallpaperHash: this.wallpaperHash,
+        classviewRev: this.classviewRev,
       });
     } catch {
       // best-effort; o pior caso é reprocessar um comando idempotente
@@ -85,6 +87,9 @@ export class CloudClient {
       this._routeBind(node.bind ?? null);
       if (node.state?.rules) this._enqueue(() => this._applyRules(node.state.rules));
       if (node.state?.wallpaper) this._enqueue(() => this._applyWallpaper(node.state.wallpaper));
+      // classview: ausente = null = limpa (PC que deixou de ser telão offline
+      // se corrige aqui, no put completo da reconexão).
+      this._enqueue(() => this._applyClassView(node.state?.classview ?? null));
       for (const [pushId, env] of Object.entries(node.cmd ?? {}).sort()) {
         if (typeof env === 'string') this._enqueue(() => this._handleCmd(pushId, env));
       }
@@ -97,11 +102,17 @@ export class CloudClient {
     if (path === '/state/wallpaper' && typeof data === 'string') {
       return this._enqueue(() => this._applyWallpaper(data));
     }
-    if (path === '/state' && data) {
-      if (typeof data.rules === 'string') this._enqueue(() => this._applyRules(data.rules));
-      if (typeof data.wallpaper === 'string') {
-        this._enqueue(() => this._applyWallpaper(data.wallpaper));
+    if (path === '/state/classview') {
+      // string aplica; null é o delete do app (desmarcou o telão) — limpa.
+      return this._enqueue(() => this._applyClassView(typeof data === 'string' ? data : null));
+    }
+    if (path === '/state') {
+      const s = data ?? {};
+      if (typeof s.rules === 'string') this._enqueue(() => this._applyRules(s.rules));
+      if (typeof s.wallpaper === 'string') {
+        this._enqueue(() => this._applyWallpaper(s.wallpaper));
       }
+      this._enqueue(() => this._applyClassView(s.classview ?? null));
       return;
     }
     if (path.startsWith('/cmd/')) {
@@ -235,6 +246,45 @@ export class CloudClient {
     }
   }
 
+  async _applyClassView(envelope) {
+    // null (delete/ausente) OU envelope ilegível (app reinstalado = chave
+    // nova) ⇒ este PC deixa de se considerar o telão. Diferente de
+    // _applyRules, que só ignora envelope ilegível: aqui o snapshot velho
+    // não pode ficar exposto na página.
+    let msg = null;
+    if (envelope != null) {
+      try {
+        msg = await open(this.key, envelope);
+      } catch {
+        msg = null;
+      }
+    }
+    if (msg == null) {
+      // Sempre repassa o null (remoção é idempotente e barata) — cobre até
+      // storage órfão com replay perdido.
+      await this.onCommand?.({ type: MessageType.SET_CLASS_VIEW, payload: { snapshot: null } });
+      if (this.classviewRev !== 0) {
+        this.classviewRev = 0;
+        await this._persistReplay();
+      }
+      return;
+    }
+    if (msg.type !== MessageType.SET_CLASS_VIEW) return;
+    const rev = Number(msg.payload?.rev) || 0;
+    if (rev <= this.classviewRev) return; // snapshot já aplicado (ou mais velho)
+    const snapshot = parseClassView(msg.payload);
+    if (!snapshot) return;
+    const ack = await this.onCommand?.({
+      type: MessageType.SET_CLASS_VIEW,
+      id: msg.id,
+      payload: { snapshot },
+    });
+    if (ack?.ok) {
+      this.classviewRev = rev;
+      await this._persistReplay();
+    }
+  }
+
   // ---- Saída (report + presença) -------------------------------------------------
 
   async _presence() {
@@ -287,6 +337,7 @@ export class CloudClient {
     this.cmdGuard = ReplayGuard.from(saved.cmd, { maxAgeMs: CMD_MAX_AGE_MS });
     this.rulesRev = Number(saved.rulesRev) || 0;
     this.wallpaperHash = saved.wallpaperHash ?? null;
+    this.classviewRev = Number(saved.classviewRev) || 0;
 
     this.running = true;
     return new Promise((resolve) => {

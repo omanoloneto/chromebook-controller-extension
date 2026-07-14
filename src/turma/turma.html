@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Visão da turma — Controle de Aula</title>
+    <link rel="stylesheet" href="turma.css" />
+  </head>
+  <body>
+    <header>
+      <div class="marca">Controle de Aula</div>
+      <h1 id="titulo">Visão da turma</h1>
+      <p class="meta"><span id="resumo"></span><span id="atualizado"></span></p>
+    </header>
+
+    <div id="banner-stale" class="banner" hidden>
+      Sem dados novos do app do professor — verifique o celular.
+    </div>
+
+    <main>
+      <ul id="lista" class="pcs"></ul>
+      <div id="vazio" class="vazio" hidden></div>
+    </main>
+
+    <script type="module" src="turma.js"></script>
+  </body>
+</html>

@@ -8,6 +8,7 @@ import {
   STORAGE_PAIRING,
   STORAGE_NAVLOG,
   STORAGE_RULES,
+  STORAGE_CLASSVIEW,
 } from '../lib/ipc.js';
 import { isSafeHttpUrl, makeTabReport, MAX_REPORT_EVENTS } from '../lib/protocol.js';
 import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.js';
@@ -161,6 +162,25 @@ async function execMostrarMensagem({ title, body }) {
       message: String(body ?? '').slice(0, 200),
       priority: 2,
     });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
+// Persiste (ou limpa, com snapshot null) a visão da turma — presença deste
+// dado no storage é o que faz este PC se considerar o "PC do professor".
+// `recebidoEm` usa o relógio LOCAL do Chromebook: a página turma mede
+// staleness sem depender de skew com o relógio do celular.
+async function execAtualizarClassView({ snapshot }) {
+  try {
+    if (!snapshot) {
+      await chrome.storage.local.remove(STORAGE_CLASSVIEW);
+    } else {
+      await chrome.storage.local.set({
+        [STORAGE_CLASSVIEW]: { ...snapshot, recebidoEm: Date.now() },
+      });
+    }
     return { ok: true };
   } catch (e) {
     return { ok: false, error: String(e?.message ?? e) };
@@ -380,6 +400,10 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
     case IPC.EXEC_SHOW_MESSAGE:
       execMostrarMensagem(msg).then(sendResponse);
+      return true;
+
+    case IPC.EXEC_SET_CLASSVIEW:
+      execAtualizarClassView(msg).then(sendResponse);
       return true;
 
     case IPC.TABS_REPORT:

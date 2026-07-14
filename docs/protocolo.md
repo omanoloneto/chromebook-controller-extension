@@ -36,6 +36,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   state/
     rules: "<envelope>"             # snapshot de regras (substitui; PC atrasado lê ao conectar)
     wallpaper: "<envelope>"         # comando set_wallpaper vigente
+    classview: "<envelope>"         # snapshot da turma p/ o PC do professor (telão);
+                                    # ausente/null = este PC não é o telão
   cmd/{pushId}: "<envelope>"        # fila professor→PC (open_url, close_tabs);
                                     # o PC deleta após o ack
   ack/{pushId}: "<envelope>"        # PC→professor; pushId = o do cmd correspondente;
@@ -97,7 +99,9 @@ Fluxo:
    `bind = {teacherUid, teacherPub, teacherName, token, ts}`. As **rules**
    validam: `token` igual ao `pairing/token` atual **e** (nó `bind` vazio **ou**
    mesmo `teacherUid`) — **TOFU imposto no servidor**. Em seguida o app grava o
-   roster e o estado vigente (`state/rules` sempre, `state/wallpaper` se houver).
+   roster e o estado vigente (`state/rules` sempre, `state/wallpaper` se
+   houver; `state/classview` é gravado se este device for o telão, ou
+   **deletado** se não for — mata um snapshot órfão de pareamento anterior).
 3. **Extensão** vê o `bind` aparecer no stream: confere o token (defesa em
    profundidade), **fixa** `teacherPub` (TOFU), deriva a chave de sessão e
    **rotaciona** `pairing/token` — o QR escaneado morre. Começa o loop normal.
@@ -149,6 +153,7 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 | `cmd/*` (professor→PC) | `(sid,seq)` **persistido** no PC | ≤ 12 h |
 | `state/rules` | `payload.rev` monotônico (`>=`), persistido | — (snapshot idempotente) |
 | `state/wallpaper` | `payload.hash` ≠ último aplicado | — (cosmético) |
+| `state/classview` | `payload.rev` monotônico (`>`), persistido; **delete/envelope ilegível limpa** o snapshot (PC deixa de se considerar telão) | — (snapshot idempotente) |
 | `report` (PC→professor) | `(sid,seq)` em memória | ±120 s no recebimento ao vivo; a 1ª leitura ao abrir o app pode ser antiga → aceita, com `lastReportAt` vindo do `ts` (servidor) do nó |
 | `ack` | `(sid,seq)` em memória | ±120 s |
 
@@ -215,8 +220,8 @@ acessa site proibido. Cliente < 0.4.2: `ack {ok:false, error:"tipo_desconhecido"
 
 ### Comandos de estado (`state/`)
 
-`set_rules` e `set_wallpaper` **não** entram na fila: o app **sobrescreve**
-`state/rules` / `state/wallpaper` com o envelope novo. Isso substitui tanto o
+`set_rules`, `set_wallpaper` e `set_class_view` **não** entram na fila: o app
+**sobrescreve** `state/*` com o envelope novo. Isso substitui tanto o
 antigo "enfileirar substituindo" quanto o reenvio a cada `/bind` — um PC que
 conecta atrasado simplesmente **lê `state/*` ao conectar** (o RTDB persiste).
 Sem ack para comandos de estado (aplicação é idempotente e guardada por
@@ -278,6 +283,46 @@ de imagem:
 > **Risco aceito (igual ao v3):** o jpeg fica **em claro** no banco, legível
 > por qualquer device vinculado àquele professor. É só um papel de parede.
 
+**`set_class_view`** (v0.4.3+) — snapshot da turma para o **PC do professor**
+(telão). Os `tab_report` são E2E por par professor↔device, então um PC nunca
+lê o que os outros reportam; o **app agrega** (só ele decifra tudo) e
+**re-cifra** este snapshot com a chave de sessão do telão, gravando em
+`state/classview` **apenas do device marcado como PC do professor**. A
+extensão que tem um snapshot válido persistido se considera o telão (papel
+implícito — não existe flag separada) e oferece a página "Ver a turma".
+
+- Conteúdo espelha a aba Aula do app: **fora de aula** = todos os PCs
+  pareados (sem `aluno`); **aula ativa** = só os PCs vinculados a aluno.
+  O telão nunca aparece na própria lista.
+- Por PC: `nome`, `aluno?`, `online`, `aba? {titulo, dominio}` (**só o
+  domínio da aba ativa — a URL completa não viaja**), `alerta?` (domínio).
+  Sem `deviceId` — o telão não precisa de identificadores.
+- O app reenvia com `rev` novo quando algo muda (debounce ~1,5 s) **e** a
+  cada **60 s** (heartbeat — alimenta o "atualizado há Xs" da página e
+  propaga transições online→offline). `rev` = epoch-ms monotônico.
+- **Desmarcar o telão / desvincular / re-parear com outro papel** → o app
+  **deleta** `state/classview`. Delete, nó ausente no reconnect ou envelope
+  ilegível (app reinstalado = chave nova) ⇒ a extensão **limpa** o snapshot
+  e deixa de se considerar telão.
+- Caps (nos dois lados): ≤ **60** PCs, `nome` ≤ 40, `aluno` ≤ 60,
+  `turma` ≤ 60, `titulo` ≤ 120, `dominio`/`alerta` ≤ 100 chars.
+- Cliente < 0.4.3 ignora o nó (rota desconhecida em `state/`) — inofensivo.
+  O app trata `permission-denied` (rules antigas) como best-effort.
+
+```json
+{ "v":1, "type":"set_class_view", "id":"a49",
+  "payload":{ "rev":1767369600000,
+    "aula":{ "ativa":true, "turma":"8º B" },
+    "pcs":[ { "nome":"PC 07", "aluno":"William", "online":true,
+              "aba":{ "titulo":"Khan Academy", "dominio":"pt.khanacademy.org" },
+              "alerta":"youtube.com" } ] } }
+```
+
+> **Risco aceito (por design):** o snapshot (nomes de alunos + título/domínio
+> da aba ativa) chega **cifrado** só ao telão, mas a página existe para ser
+> **exibida publicamente** (projetor). Quem controla a exposição é o
+> professor, abrindo ou não a página.
+
 ### `tab_report` (PC → professor)
 
 Monitoramento **somente de URLs/títulos — sem captura de tela**. O envelope é
@@ -328,7 +373,9 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   vincular; rotacionado após cada uso.
 - **Riscos aceitos:** blob do wallpaper em claro no banco; metadados de
   pareamento (pubkeys, labels) em claro; ciphertext do último `report` repousa
-  no banco (E2E — só a chave do professor abre; deletado ao desvincular).
+  no banco (E2E — só a chave do professor abre; deletado ao desvincular);
+  snapshot `classview` repousa cifrado no nó do telão e é exibido publicamente
+  por design (§3, `set_class_view`).
 - **Histórico de aulas (retenção):** o app grava em `/history` os acessos de
   alunos VINCULADOS durante aulas ativas — cifrado (só o professor decifra),
   apagável na UI (por aula, por aluno ou tudo). Recomenda-se transparência

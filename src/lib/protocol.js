@@ -22,10 +22,11 @@ export const MessageType = Object.freeze({
   CLOSE_ALL_TABS: 'close_all_tabs',
   SET_RULES: 'set_rules',
   SET_WALLPAPER: 'set_wallpaper',
+  SHOW_MESSAGE: 'show_message',
+  SET_CLASS_VIEW: 'set_class_view',
   // Reservados (futuro):
   LOCK_SCREEN: 'lock_screen',
   UNLOCK_SCREEN: 'unlock_screen',
-  SHOW_MESSAGE: 'show_message',
   FOCUS_MODE: 'focus_mode',
 });
 
@@ -114,4 +115,52 @@ export function makeTabReport(tabs, events) {
         ts: typeof e.ts === 'number' ? e.ts : 0,
       })),
   };
+}
+
+// ---- Visão da turma (set_class_view, v0.4.3+) --------------------------------
+// Snapshot agregado pelo APP e re-cifrado só para o PC do professor (telão).
+// Caps espelhados com lib/src/commands/class_view.dart (paridade por fixture:
+// tests/classview.test.mjs <-> test/class_view_test.dart).
+
+export const MAX_CLASSVIEW_PCS = 60;
+export const MAX_CLASSVIEW_NOME = 40;
+export const MAX_CLASSVIEW_ALUNO = 60;
+export const MAX_CLASSVIEW_TURMA = 60;
+export const MAX_CLASSVIEW_TITULO = 120;
+export const MAX_CLASSVIEW_DOMINIO = 100;
+
+/// Valida/sanitiza o payload de um set_class_view. Retorna o snapshot limpo
+/// `{rev, aula:{ativa, turma?}, pcs:[{nome, aluno?, online, aba?, alerta?}]}`
+/// ou `null` se o payload for inválido (o chamador trata como "sem snapshot").
+export function parseClassView(payload) {
+  if (!payload || typeof payload !== 'object') return null;
+  const rev = payload.rev;
+  if (typeof rev !== 'number' || !Number.isFinite(rev) || rev <= 0) return null;
+  if (!Array.isArray(payload.pcs)) return null;
+
+  const aula = { ativa: payload.aula?.ativa === true };
+  if (aula.ativa && typeof payload.aula?.turma === 'string') {
+    aula.turma = cortar(payload.aula.turma, MAX_CLASSVIEW_TURMA);
+  }
+
+  const pcs = payload.pcs
+    .filter((p) => p && typeof p === 'object' && typeof p.nome === 'string')
+    .slice(0, MAX_CLASSVIEW_PCS)
+    .map((p) => {
+      const pc = {
+        nome: cortar(p.nome, MAX_CLASSVIEW_NOME),
+        online: p.online === true,
+      };
+      if (typeof p.aluno === 'string') pc.aluno = cortar(p.aluno, MAX_CLASSVIEW_ALUNO);
+      if (p.aba && typeof p.aba.dominio === 'string') {
+        pc.aba = {
+          titulo: cortar(p.aba.titulo, MAX_CLASSVIEW_TITULO),
+          dominio: cortar(p.aba.dominio, MAX_CLASSVIEW_DOMINIO),
+        };
+      }
+      if (typeof p.alerta === 'string') pc.alerta = cortar(p.alerta, MAX_CLASSVIEW_DOMINIO);
+      return pc;
+    });
+
+  return { rev, aula, pcs };
 }

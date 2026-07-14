@@ -10,6 +10,7 @@ import {
   STORAGE_PAIRING,
   STORAGE_AUTH,
   STORAGE_REPLAY,
+  STORAGE_CLASSVIEW,
 } from '../lib/ipc.js';
 import { firebaseConfig } from '../lib/firebase-config.js';
 import { FirebaseSession } from '../lib/firebase.js';
@@ -153,6 +154,7 @@ async function desvincular(id) {
   currentClient?.stop();
   await storeSet(STORAGE_BINDING, null);
   await storeSet(STORAGE_REPLAY, null);
+  await storeSet(STORAGE_CLASSVIEW, null); // deixa de ser telão junto com o vínculo
   if (!fb?.idToken) return; // sem sessão Firebase, só limpa o local
   const base = `/devices/${id.deviceId}`;
   for (const sufixo of ['bind', 'report', 'ack', 'presence']) {
@@ -186,6 +188,9 @@ async function executarComando(cmd) {
       });
     case MessageType.SHOW_MESSAGE:
       return exec(IPC.EXEC_SHOW_MESSAGE, cmd.payload);
+    case MessageType.SET_CLASS_VIEW:
+      // payload.snapshot já validado pelo CloudClient (null = limpar).
+      return exec(IPC.EXEC_SET_CLASSVIEW, cmd.payload);
     default:
       return { ok: false, error: 'tipo_desconhecido' };
   }

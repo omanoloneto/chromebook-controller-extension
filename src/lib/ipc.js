@@ -23,6 +23,7 @@ export const IPC = Object.freeze({
   EXEC_SET_RULES: 'exec:setRules', // { rev, rules }; resp { ok }
   EXEC_WALLPAPER: 'exec:wallpaper', // { jpegB64, hash }; resp { ok, error }
   EXEC_SHOW_MESSAGE: 'exec:showMessage', // { title, body }; resp { ok, error }
+  EXEC_SET_CLASSVIEW: 'exec:setClassView', // { snapshot|null } persiste/limpa a visão da turma; resp { ok }
 
   // offscreen -> service worker (relatório de abas para o professor)
   TABS_REPORT: 'tabs:report', // resp { report } (ver makeTabReport)
@@ -36,6 +37,7 @@ export const STORAGE_KEYPAIR = 'keypair'; // {privJwk, pub, deviceId, label}
 export const STORAGE_BINDING = 'binding'; // {teacherUid, teacherPub, teacherName}
 export const STORAGE_PAIRING = 'pairing'; // {token} (one-time, vai no QR)
 export const STORAGE_AUTH = 'fbauth'; // {uid, refreshToken} (Auth anônima)
-export const STORAGE_REPLAY = 'replay'; // {cmd:{sid,seq}, rulesRev, wallpaperHash}
+export const STORAGE_REPLAY = 'replay'; // {cmd:{sid,seq}, rulesRev, wallpaperHash, classviewRev}
 export const STORAGE_NAVLOG = 'navlog'; // [{url, title, ts, tabId}] (log rolante)
 export const STORAGE_RULES = 'rules'; // {rev, rules:[{pattern}]} (bloqueio)
+export const STORAGE_CLASSVIEW = 'classview'; // {rev, aula, pcs, recebidoEm} (presente = este PC é o telão)

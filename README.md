@@ -49,6 +49,7 @@ src/
 ├── popup/         # QR de pareamento, status, "Desvincular", nome do PC
 ├── pairing/       # QR em tela cheia
 ├── blocked/       # página "Site bloqueado pelo professor"
+├── turma/         # página "Visão da turma" (só no PC do professor/telão)
 ├── lib/           # firebase.js (REST+SSE), cloud-client.js, replay.js,
 │   │              # keypair.js (X25519), crypto.js (AES), protocol.js, rules.js
 │   └── vendor/    # qrcode.js (gerador de QR, MIT, vendorizado)
@@ -90,6 +91,10 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
 - [x] **Papel de parede** da turma (`chrome.wallpaper`, só ChromeOS)
 - [x] **Nome do PC** editável no popup; **desvincular** com limpeza no banco
 - [x] **Auto-update**: Web Store não listada + release por tag (GitHub Action)
+- [x] **Notificação no PC do professor** (`show_message`, v0.4.2)
+- [x] **Visão da turma no telão** (v0.4.3): página com a lista de PCs e a aba
+      ativa de cada um — snapshot agregado e re-cifrado pelo app
+      (`set_class_view`); o popup ganha "📺 Ver a turma" no PC do professor
 - [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem
