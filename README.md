@@ -98,6 +98,8 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
 - [x] **Número da unidade** (v0.4.5): popup mostra grande o número que o app
       atribui no pareamento (`bind.numero`); label vira "Unidade N"; sem
       renomear pelo popup; botão ↻ de reconectar no cantinho
+- [x] **Número editável pelo app** (v0.4.6): comando de estado `set_unit`
+      atualiza número/label ao vivo (persiste p/ PC offline)
 - [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem

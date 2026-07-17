@@ -24,6 +24,7 @@ export const MessageType = Object.freeze({
   SET_WALLPAPER: 'set_wallpaper',
   SHOW_MESSAGE: 'show_message',
   SET_CLASS_VIEW: 'set_class_view',
+  SET_UNIT: 'set_unit',
   // Reservados (futuro):
   LOCK_SCREEN: 'lock_screen',
   UNLOCK_SCREEN: 'unlock_screen',

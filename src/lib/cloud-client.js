@@ -38,6 +38,7 @@ export class CloudClient {
     this.rulesRev = 0;
     this.wallpaperHash = null;
     this.classviewRev = 0;
+    this.unitRev = 0;
 
     this._resolve = null;
     this._stream = null;
@@ -68,6 +69,7 @@ export class CloudClient {
         rulesRev: this.rulesRev,
         wallpaperHash: this.wallpaperHash,
         classviewRev: this.classviewRev,
+        unitRev: this.unitRev,
       });
     } catch {
       // best-effort; o pior caso é reprocessar um comando idempotente
@@ -87,6 +89,7 @@ export class CloudClient {
       this._routeBind(node.bind ?? null);
       if (node.state?.rules) this._enqueue(() => this._applyRules(node.state.rules));
       if (node.state?.wallpaper) this._enqueue(() => this._applyWallpaper(node.state.wallpaper));
+      if (node.state?.unit) this._enqueue(() => this._applyUnit(node.state.unit));
       // classview: ausente = null = limpa (PC que deixou de ser telão offline
       // se corrige aqui, no put completo da reconexão).
       this._enqueue(() => this._applyClassView(node.state?.classview ?? null));
@@ -106,12 +109,16 @@ export class CloudClient {
       // string aplica; null é o delete do app (desmarcou o telão) — limpa.
       return this._enqueue(() => this._applyClassView(typeof data === 'string' ? data : null));
     }
+    if (path === '/state/unit' && typeof data === 'string') {
+      return this._enqueue(() => this._applyUnit(data));
+    }
     if (path === '/state') {
       const s = data ?? {};
       if (typeof s.rules === 'string') this._enqueue(() => this._applyRules(s.rules));
       if (typeof s.wallpaper === 'string') {
         this._enqueue(() => this._applyWallpaper(s.wallpaper));
       }
+      if (typeof s.unit === 'string') this._enqueue(() => this._applyUnit(s.unit));
       this._enqueue(() => this._applyClassView(s.classview ?? null));
       return;
     }
@@ -246,6 +253,31 @@ export class CloudClient {
     }
   }
 
+  async _applyUnit(envelope) {
+    // Número da unidade editado pelo professor. Ilegível/ausente → IGNORA
+    // (número não é papel: o vigente continua; re-pareamento reescreve tudo).
+    let msg;
+    try {
+      msg = await open(this.key, envelope);
+    } catch {
+      return;
+    }
+    if (msg.type !== MessageType.SET_UNIT) return;
+    const rev = Number(msg.payload?.rev) || 0;
+    if (rev <= this.unitRev) return; // já aplicado (ou mais velho)
+    const numero = msg.payload?.numero;
+    if (!Number.isInteger(numero) || numero < 1 || numero > 9999) return;
+    const ack = await this.onCommand?.({
+      type: MessageType.SET_UNIT,
+      id: msg.id,
+      payload: { numero },
+    });
+    if (ack?.ok) {
+      this.unitRev = rev;
+      await this._persistReplay();
+    }
+  }
+
   async _applyClassView(envelope) {
     // null (delete/ausente) OU envelope ilegível (app reinstalado = chave
     // nova) ⇒ este PC deixa de se considerar o telão. Diferente de
@@ -338,6 +370,7 @@ export class CloudClient {
     this.rulesRev = Number(saved.rulesRev) || 0;
     this.wallpaperHash = saved.wallpaperHash ?? null;
     this.classviewRev = Number(saved.classviewRev) || 0;
+    this.unitRev = Number(saved.unitRev) || 0;
 
     this.running = true;
     return new Promise((resolve) => {

@@ -35,7 +35,7 @@
 
         "state": {
           ".write": "auth != null && data.parent().child('bind/teacherUid').val() === auth.uid",
-          "$k": { ".validate": "($k === 'rules' || $k === 'wallpaper' || $k === 'classview') && newData.isString() && newData.val().length < 262144" }
+          "$k": { ".validate": "($k === 'rules' || $k === 'wallpaper' || $k === 'classview' || $k === 'unit') && newData.isString() && newData.val().length < 262144" }
         },
 
         "cmd": {

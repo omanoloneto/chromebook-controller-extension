@@ -168,6 +168,25 @@ async function desvincular(id) {
   await rotateToken(id);
 }
 
+/// Professor mudou o número da unidade (set_unit): atualiza binding, label
+/// do keypair e meta/label (o app ouve meta/label e sincroniza o nome).
+async function aplicarNumeroUnidade(numero) {
+  try {
+    const binding = await storeGet(STORAGE_BINDING);
+    if (binding) await storeSet(STORAGE_BINDING, { ...binding, numero });
+    const label = `Unidade ${numero}`;
+    const kp = await storeGet(STORAGE_KEYPAIR);
+    if (kp) await storeSet(STORAGE_KEYPAIR, { ...kp, label });
+    if (identity) identity.label = label;
+    if (fb?.idToken && identity) {
+      await fb.patch(`/devices/${identity.deviceId}/meta`, { label }).catch(() => {});
+    }
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  }
+}
+
 /// Mapeia um comando decifrado para o executor no service worker.
 async function executarComando(cmd) {
   const exec = (ipcCmd, extras) =>
@@ -196,6 +215,10 @@ async function executarComando(cmd) {
     case MessageType.SET_CLASS_VIEW:
       // payload.snapshot já validado pelo CloudClient (null = limpar).
       return exec(IPC.EXEC_SET_CLASSVIEW, cmd.payload);
+    case MessageType.SET_UNIT:
+      // Resolvido aqui mesmo (offscreen tem storage-proxy + fb; o SW não é
+      // necessário): numero validado pelo CloudClient.
+      return aplicarNumeroUnidade(cmd.payload?.numero);
     default:
       return { ok: false, error: 'tipo_desconhecido' };
   }

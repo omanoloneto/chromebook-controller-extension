@@ -44,6 +44,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
     wallpaper: "<envelope>"         # comando set_wallpaper vigente
     classview: "<envelope>"         # snapshot da turma p/ o PC do professor (telão);
                                     # ausente/null = este PC não é o telão
+    unit: "<envelope>"              # set_unit vigente (número da unidade editado
+                                    # pelo professor depois do pareamento)
   cmd/{pushId}: "<envelope>"        # fila professor→PC (open_url, close_tabs);
                                     # o PC deleta após o ack
   ack/{pushId}: "<envelope>"        # PC→professor; pushId = o do cmd correspondente;
@@ -163,6 +165,7 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 | `state/rules` | `payload.rev` monotônico (`>=`), persistido | — (snapshot idempotente) |
 | `state/wallpaper` | `payload.hash` ≠ último aplicado | — (cosmético) |
 | `state/classview` | `payload.rev` monotônico (`>`), persistido; **delete/envelope ilegível limpa** o snapshot (PC deixa de se considerar telão) | — (snapshot idempotente) |
+| `state/unit` | `payload.rev` monotônico (`>`), persistido; ilegível/null **ignora** (número vigente continua — re-pareamento reescreve) | — (snapshot idempotente) |
 | `report` (PC→professor) | `(sid,seq)` em memória | ±120 s no recebimento ao vivo; a 1ª leitura ao abrir o app pode ser antiga → aceita, com `lastReportAt` vindo do `ts` (servidor) do nó |
 | `ack` | `(sid,seq)` em memória | ±120 s |
 
@@ -229,8 +232,8 @@ acessa site proibido. Cliente < 0.4.2: `ack {ok:false, error:"tipo_desconhecido"
 
 ### Comandos de estado (`state/`)
 
-`set_rules`, `set_wallpaper` e `set_class_view` **não** entram na fila: o app
-**sobrescreve** `state/*` com o envelope novo. Isso substitui tanto o
+`set_rules`, `set_wallpaper`, `set_class_view` e `set_unit` **não** entram na
+fila: o app **sobrescreve** `state/*` com o envelope novo. Isso substitui tanto o
 antigo "enfileirar substituindo" quanto o reenvio a cada `/bind` — um PC que
 conecta atrasado simplesmente **lê `state/*` ao conectar** (o RTDB persiste).
 Sem ack para comandos de estado (aplicação é idempotente e guardada por
@@ -331,6 +334,19 @@ implícito — não existe flag separada) e oferece a página "Ver a turma".
 > da aba ativa) chega **cifrado** só ao telão, mas a página existe para ser
 > **exibida publicamente** (projetor). Quem controla a exposição é o
 > professor, abrindo ou não a página.
+
+**`set_unit`** (v0.4.6+) — número da unidade **editado pelo professor** depois
+do pareamento (o `bind` é inatualizável: as rules exigem o `pairing/token`
+atual, já rotacionado). Vai por estado — não por fila — para sobreviver a PC
+offline por dias. A extensão aplica: `binding.numero`, label do PC vira
+`Unidade {numero}` (atualiza `meta/label` — o app ouve e sincroniza o nome).
+`numero` inteiro 1..9999. O app garante unicidade por professor (número
+ocupado = os dois PCs **trocam**). Re-pareamento reescreve `state/unit` com a
+chave de sessão nova. Cliente < 0.4.6 ignora a rota — inofensivo.
+
+```json
+{ "v":1, "type":"set_unit", "id":"a50", "payload":{ "rev":1767369700000, "numero":2 } }
+```
 
 ### `tab_report` (PC → professor)
 
