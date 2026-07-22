@@ -149,9 +149,25 @@ async function execFecharTudo({ closeWindows = false } = {}) {
   }
 }
 
-// Notificação do sistema (usada no "PC do professor": aviso de aluno em site
-// proibido). Som = padrão do sistema para prioridade alta.
-async function execMostrarMensagem({ title, body }) {
+// show_message: com popup:true (app >= 0.15.2, ext >= 0.4.8) abre a página
+// "Mensagem do professor" em aba nova; sem popup, notificação do sistema
+// (avisos do telão). Som = padrão do sistema para prioridade alta.
+async function execMostrarMensagem({ title, body, popup, de }) {
+  const corpo = String(body ?? '').slice(0, 500);
+  if (popup === true) {
+    try {
+      const json = unescape(
+        encodeURIComponent(JSON.stringify({ de: String(de ?? '').slice(0, 60), corpo })),
+      );
+      const m = btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+      await chrome.tabs.create({
+        url: chrome.runtime.getURL(`mensagem/mensagem.html?m=${m}`),
+      });
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e?.message ?? e) };
+    }
+  }
   if (chrome.notifications === undefined) {
     return { ok: false, error: 'sem_notifications' };
   }
@@ -160,7 +176,7 @@ async function execMostrarMensagem({ title, body }) {
       type: 'basic',
       iconUrl: chrome.runtime.getURL('icons/icon-128.png'),
       title: String(title ?? 'Controle de Aula').slice(0, 100),
-      message: String(body ?? '').slice(0, 200),
+      message: corpo,
       priority: 2,
     });
     return { ok: true };

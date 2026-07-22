@@ -102,6 +102,8 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
       atualiza número/label ao vivo (persiste p/ PC offline)
 - [x] **Auto-reconexão** (v0.4.7): preso em "conectando" por 5s (com rede) =
       o ↻ dispara sozinho a cada 5s até voltar
+- [x] **Mensagem do professor em popup** (v0.4.8): `show_message` com
+      `popup:true` abre página com o texto + botão "Entendi"
 - [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem

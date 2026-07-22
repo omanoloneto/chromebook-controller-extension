@@ -239,13 +239,18 @@ responde `ack {ok:false, error:"tipo_desconhecido"}` — inofensivo.
 { "v":1, "type":"close_all_tabs", "id":"a47", "payload":{ "closeWindows": true } }
 ```
 
-**`show_message`** (v0.4.2+) — notificação do sistema no Chromebook
-(`chrome.notifications`, priority 2, ícone da extensão; som = padrão do
-sistema). Usado pelo app para "apitar" no **PC do professor** quando um aluno
-acessa site proibido. Cliente < 0.4.2: `ack {ok:false, error:"tipo_desconhecido"}`.
+**`show_message`** (v0.4.2+) — sem `popup`: notificação do sistema no
+Chromebook (`chrome.notifications`, priority 2; som = padrão). Usado pelo app
+para "apitar" no **PC do professor** quando um aluno acessa site proibido.
+Com **`popup: true`** (app ≥ 0.15.2, ext ≥ 0.4.8): abre a página "Mensagem do
+professor" em aba nova (mensagem individual professor→aluno); `de` = nome do
+professor exibido no título. Extensão antiga ignora os campos extras e degrada
+para notificação. Caps no executor: `title` ≤ 100, `body` ≤ 500 (era 200),
+`de` ≤ 60. Cliente < 0.4.2: `ack {ok:false, error:"tipo_desconhecido"}`.
 
 ```json
 { "v":1, "type":"show_message", "id":"a48", "payload":{ "title":"⚠ William", "body":"youtube.com" } }
+{ "v":1, "type":"show_message", "id":"a49", "payload":{ "title":"Mensagem do professor", "body":"Volte para a atividade.", "popup":true, "de":"Prof. Manoel" } }
 ```
 
 **Ack**
