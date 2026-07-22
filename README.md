@@ -100,6 +100,8 @@ cd firebase && firebase emulators:exec --only database --project demo-test \
       renomear pelo popup; botão ↻ de reconectar no cantinho
 - [x] **Número editável pelo app** (v0.4.6): comando de estado `set_unit`
       atualiza número/label ao vivo (persiste p/ PC offline)
+- [x] **Auto-reconexão** (v0.4.7): preso em "conectando" por 5s (com rede) =
+      o ↻ dispara sozinho a cada 5s até voltar
 - [ ] 1ª publicação na Web Store (manual, pendente)
 - [ ] Teste de campo (professor + turma real)
 - [ ] Comandos futuros: bloquear tela, mensagem

@@ -26,6 +26,7 @@ import {
   deriveSessionKey,
 } from '../lib/keypair.js';
 import { MessageType } from '../lib/protocol.js';
+import { deveAutoReconectar, AUTO_RECONNECT_MS } from '../lib/reconnect.js';
 
 let identity = null; // { privKey, pubRaw, deviceId, label }
 let fb = null; // FirebaseSession (vive o offscreen inteiro)
@@ -42,12 +43,46 @@ const storeGet = async (key) =>
 const storeSet = (key, value) =>
   chrome.runtime.sendMessage({ cmd: IPC.STORE_SET, key, value });
 
+// Estado p/ a auto-reconexão: valor atual + QUANDO mudou (re-emissão do
+// mesmo estado, ex.: 'connecting' a cada volta do mainLoop, não conta).
+let ultimoEstado = 'connecting';
+let estadoMudouEm = Date.now();
+let ultimoAutoRestart = 0;
+
 function broadcast(state, detail, teacher) {
   if (detail) console.log('[CdA]', state, '-', detail);
+  if (state !== ultimoEstado) {
+    ultimoEstado = state;
+    estadoMudouEm = Date.now();
+  }
   chrome.runtime
     .sendMessage({ cmd: IPC.STATE_CHANGED, state, detail: detail ?? null, teacher: teacher ?? null })
     .catch(() => {});
 }
+
+/// Derruba a sessão Firebase inteira e deixa o mainLoop reconectar do zero
+/// (mesma rotina do ↻ do popup e da auto-reconexão).
+function reiniciarConexao() {
+  fb?.stop();
+  fb = null;
+  bindWaitCancel?.();
+  currentClient?.stop(); // faz o run() retornar -> o loop recomeça
+}
+
+// Auto-↻: preso em 'connecting' por 5s (com rede) = reconecta sozinho.
+setInterval(() => {
+  const agora = Date.now();
+  const decide = deveAutoReconectar({
+    estado: ultimoEstado,
+    presoMs: agora - estadoMudouEm,
+    desdeUltimoRestartMs: agora - ultimoAutoRestart,
+    online: navigator.onLine,
+  });
+  if (!decide) return;
+  ultimoAutoRestart = agora;
+  console.log('[CdA] auto-reconexão (preso em connecting)');
+  reiniciarConexao();
+}, AUTO_RECONNECT_MS);
 
 async function ensureIdentity() {
   if (identity) return identity;
@@ -302,13 +337,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg?.target !== TARGET_OFFSCREEN) return false;
   (async () => {
     if (msg.cmd === IPC.OFF_RESTART) {
-      identity = null; // força reler o keypair
-      // Reconexão COMPLETA (botão ↻ do popup): derruba a sessão Firebase e
-      // re-autentica do zero — cobre token/estado preso após queda de rede.
-      fb?.stop();
-      fb = null;
-      bindWaitCancel?.();
-      currentClient?.stop(); // faz o run() retornar -> o loop recomeça
+      identity = null; // força reler o keypair (o timer de auto-↻ não precisa)
+      reiniciarConexao();
       sendResponse({ ok: true });
     } else if (msg.cmd === IPC.OFF_UNBIND) {
       const id = await ensureIdentity();
