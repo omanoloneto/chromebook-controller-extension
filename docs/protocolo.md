@@ -74,6 +74,25 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # histórico antigo indecifrável. Rules:
                                     # owner-only. Retenção: até apagar na UI.
 
+/school/                            # workspace da escola (app >= 0.15; SÓ o app —
+  meta/ {schoolUid, criadoEm}       # a extensão NUNCA lê /school). Gate nas rules:
+  keypair/ {keys, ts}               # professor = auth Google (auth.token.email).
+                                    # keys = keypair da ESCOLA em claro (risco
+                                    # aceito: modelo aberto — qualquer login
+                                    # Google do app entra). Create-once: troca
+                                    # de chave só pelo console. schoolUid = uid
+                                    # do FUNDADOR (bind/history/wallpaper dele).
+  devices/{deviceId}: true          # roster único da escola
+  stores/{k}: {rev, env}            # k = turmas|rules|units|names; env =
+                                    # arquivo local inteiro {json} cifrado com
+                                    # chave HKDF da keypair da escola
+                                    # (info 'school-store-v1'); LWW por rev
+                                    # (relógio do servidor)
+  aulas/{deviceId}: {uid, ts, env}  # trava "1 PC em 1 aula por vez"; env =
+                                    # {professor, turma} cifrado; heartbeat
+                                    # renova ts; órfã >15min sofre takeover
+                                    # (validado nas rules)
+
 /backup/{teacherUid}/               # backup p/ troca de celular (SÓ o app).
   keypair: "<blob PBKDF2+AES>"      # teacher_key.txt cifrado pelo PIN do prof
                                     # (PBKDF2-HMAC-SHA256, salt no blob) — nem
@@ -410,6 +429,12 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   alunos VINCULADOS durante aulas ativas — cifrado (só o professor decifra),
   apagável na UI (por aula, por aluno ou tudo). Recomenda-se transparência
   com escola/responsáveis.
+- **Workspace da escola (aberto):** qualquer conta Google que use o app entra
+  no workspace e lê a chave da escola — risco aceito pelo usuário (escola
+  pequena). Mitigação futura anotada: restringir por domínio de e-mail nas
+  rules (`auth.token.email.endsWith(...)`). O gate de professor nas rules é
+  `auth.token.email != null` — NUNCA `auth.provider` (conta linkada emite
+  sign_in_provider 'anonymous' + email).
 - **Requisitos do console:** Auth anônima ON; rules publicadas. (Auth padrão
   não apaga contas anônimas; só com upgrade p/ Identity Platform existe
   "Automatic clean-up" — manter OFF nesse caso.)
