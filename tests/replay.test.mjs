@@ -46,6 +46,25 @@ test('vetores do canal cmd (janela 12h)', () => {
   });
 });
 
+// Multi-remetente (workspace, app >= 0.15): cada celular manda sid NOVO por
+// mensagem, amostrado do relógio do SERVIDOR (comum a todos) — o guard aceita
+// a alternância porque o sid sempre cresce; replay segue rejeitado.
+const VETORES_MULTI_REMETENTE = [
+  [T0 + 1, 1, T0 + 1, T0 + 2, true], // celular A
+  [T0 + 5, 1, T0 + 5, T0 + 6, true], // celular B
+  [T0 + 9, 1, T0 + 9, T0 + 10, true], // celular A de novo — não foi envenenado
+  [T0 + 5, 1, T0 + 5, T0 + 11, false], // replay do envio do B
+  [T0 + 3, 1, T0 + 3, T0 + 12, false], // mensagem atrasada de sid antigo morre
+  [T0 + 20, 1, T0 + 20, T0 + 21, true], // fluxo segue
+];
+
+test('vetores multi-remetente (2 celulares, sid por mensagem)', () => {
+  const g = new ReplayGuard({ maxAgeMs: 12 * HORA });
+  VETORES_MULTI_REMETENTE.forEach(([sid, seq, ts, nowMs, esperado], i) => {
+    assert.equal(g.accept({ sid, seq, ts, nowMs }), esperado, `vetor #${i + 1}`);
+  });
+});
+
 test('persistência: toJSON/from preservam o estado', () => {
   const g = new ReplayGuard({ maxAgeMs: 12 * HORA });
   assert.equal(g.accept({ sid: 5000, seq: 7, ts: T0, nowMs: T0 }), true);

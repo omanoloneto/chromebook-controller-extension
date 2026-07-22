@@ -155,8 +155,12 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 - **Aceitação (anti-replay, os dois lados):** aceita se `sid > lastSid`
   (época nova → zera contador) **ou** (`sid == lastSid` **e** `seq > lastSeq`);
   então atualiza. O remetente **não** persiste contadores (reinício = `sid`
-  novo). Racional: o Firebase é tratado como transporte não confiável — AEAD
-  barra forja, `sid/seq/rev` barra replay.
+  novo). O remetente **pode** amostrar um `sid` novo POR MENSAGEM (app ≥ 0.15
+  faz isso, no relógio do servidor — necessário no workspace multi-professor:
+  com sid fixo por processo, dois celulares alternando comandos no mesmo PC
+  derrubariam um ao outro); a regra de aceitação não muda. Racional: o
+  Firebase é tratado como transporte não confiável — AEAD barra forja,
+  `sid/seq/rev` barra replay.
 - **Janela de `ts` por canal** (envelopes agora repousam no banco, não são
   selados na entrega):
 
