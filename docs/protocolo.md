@@ -33,8 +33,9 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # rotacionado após cada bind e cada unbind
   bind/ {teacherUid, teacherPub, teacherName, token, ts, numero?}
                                     # claro; escrito pelo PROFESSOR ao escanear (TOFU).
-                                    # numero (app >= 0.13) = unidade 1..9999 na ordem
-                                    # de pareamento DESTE professor; re-parear o mesmo
+                                    # numero (app >= 0.13) = unidade 1..9999 DESTE
+                                    # professor — MENOR número livre no pareamento
+                                    # (app >= 0.14.1; antes: máx+1); re-parear o mesmo
                                     # PC mantém o número. A extensão exibe "Unidade N"
                                     # grande no popup e assume "Unidade N" como label
                                     # (meta/label). Ausente (app antigo): popup cai
