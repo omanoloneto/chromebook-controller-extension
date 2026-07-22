@@ -5,7 +5,7 @@
 
     "devices": {
       "$deviceId": {
-        ".read": "auth != null && (data.child('meta/uid').val() === auth.uid || data.child('bind/teacherUid').val() === auth.uid)",
+        ".read": "auth != null && (data.child('meta/uid').val() === auth.uid || data.child('bind/teacherUid').val() === auth.uid || auth.token.email != null)",
 
         "meta": {
           ".write": "auth != null && ((!data.child('uid').exists() && newData.child('uid').val() === auth.uid) || data.child('uid').val() === auth.uid)",
@@ -23,7 +23,7 @@
         },
 
         "bind": {
-          ".write": "auth != null && ((newData.exists() && newData.child('token').val() === data.parent().child('pairing/token').val() && newData.child('teacherUid').val() === auth.uid && (!data.exists() || data.child('teacherUid').val() === auth.uid)) || (!newData.exists() && (data.child('teacherUid').val() === auth.uid || data.parent().child('meta/uid').val() === auth.uid)))",
+          ".write": "auth != null && ((newData.exists() && newData.child('token').val() === data.parent().child('pairing/token').val() && (newData.child('teacherUid').val() === auth.uid || (auth.token.email != null && newData.child('teacherUid').val() === root.child('school/meta/schoolUid').val())) && (!data.exists() || data.child('teacherUid').val() === auth.uid || auth.token.email != null)) || (!newData.exists() && (data.child('teacherUid').val() === auth.uid || data.parent().child('meta/uid').val() === auth.uid || auth.token.email != null)))",
           "teacherUid":  { ".validate": "newData.isString()" },
           "teacherPub":  { ".validate": "newData.isString() && newData.val().length <= 64" },
           "teacherName": { ".validate": "newData.isString() && newData.val().length <= 60" },
@@ -34,12 +34,12 @@
         },
 
         "state": {
-          ".write": "auth != null && data.parent().child('bind/teacherUid').val() === auth.uid",
+          ".write": "auth != null && (data.parent().child('bind/teacherUid').val() === auth.uid || auth.token.email != null)",
           "$k": { ".validate": "($k === 'rules' || $k === 'wallpaper' || $k === 'classview' || $k === 'unit') && newData.isString() && newData.val().length < 262144" }
         },
 
         "cmd": {
-          ".write": "auth != null && data.parent().child('bind/teacherUid').val() === auth.uid",
+          ".write": "auth != null && (data.parent().child('bind/teacherUid').val() === auth.uid || auth.token.email != null)",
           "$pushId": {
             ".write": "auth != null && data.parent().parent().child('meta/uid').val() === auth.uid && !newData.exists()",
             ".validate": "newData.isString() && newData.val().length < 65536"
@@ -49,7 +49,7 @@
         "ack": {
           ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
           "$pushId": {
-            ".write": "auth != null && data.parent().parent().child('bind/teacherUid').val() === auth.uid && !newData.exists()",
+            ".write": "auth != null && (data.parent().parent().child('bind/teacherUid').val() === auth.uid || auth.token.email != null) && !newData.exists()",
             ".validate": "newData.isString() && newData.val().length < 16384"
           }
         },
@@ -85,6 +85,51 @@
       }
     },
 
+    "school": {
+      "meta": {
+        ".read": "auth != null && auth.token.email != null",
+        ".write": "auth != null && auth.token.email != null && !data.exists()",
+        "schoolUid": { ".validate": "newData.isString()" },
+        "criadoEm":  { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      },
+      "keypair": {
+        ".read": "auth != null && auth.token.email != null",
+        ".write": "auth != null && auth.token.email != null && !data.exists()",
+        "keys": { ".validate": "newData.isString() && newData.val().length < 16384" },
+        "ts":   { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      },
+      "devices": {
+        ".read": "auth != null && auth.token.email != null",
+        "$deviceId": {
+          ".write": "auth != null && auth.token.email != null",
+          ".validate": "newData.isBoolean()"
+        }
+      },
+      "stores": {
+        ".read": "auth != null && auth.token.email != null",
+        "$k": {
+          ".write": "auth != null && auth.token.email != null",
+          ".validate": "$k === 'turmas' || $k === 'rules' || $k === 'units' || $k === 'names'",
+          "rev": { ".validate": "newData.isNumber()" },
+          "env": { ".validate": "newData.isString() && newData.val().length < 1048576" },
+          "$other": { ".validate": false }
+        }
+      },
+      "aulas": {
+        ".read": "auth != null && auth.token.email != null",
+        "$deviceId": {
+          ".write": "auth != null && auth.token.email != null && (!data.exists() || data.child('uid').val() === auth.uid || now - data.child('ts').val() > 900000)",
+          "uid": { ".validate": "newData.isString()" },
+          "ts":  { ".validate": "newData.isNumber()" },
+          "env": { ".validate": "newData.isString() && newData.val().length < 4096" },
+          "$other": { ".validate": false }
+        }
+      },
+      "$other": { ".validate": false }
+    },
+
     "backup": {
       "$tUid": {
         ".read": "auth != null && auth.uid === $tUid",
@@ -98,8 +143,8 @@
 
     "history": {
       "$tUid": {
-        ".read": "auth != null && auth.uid === $tUid",
-        ".write": "auth != null && auth.uid === $tUid",
+        ".read": "auth != null && (auth.uid === $tUid || auth.token.email != null)",
+        ".write": "auth != null && (auth.uid === $tUid || auth.token.email != null)",
         "$sessionId": {
           "meta": { ".validate": "newData.isString() && newData.val().length < 65536" },
           "ev": {
@@ -112,8 +157,8 @@
 
     "wallpapers": {
       "$tUid": {
-        ".write": "auth != null && auth.uid === $tUid",
-        ".read": "auth != null && (auth.uid === $tUid || root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('bind/teacherUid').val() === $tUid)",
+        ".write": "auth != null && (auth.uid === $tUid || auth.token.email != null)",
+        ".read": "auth != null && (auth.uid === $tUid || auth.token.email != null || root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('bind/teacherUid').val() === $tUid)",
         "hash": { ".validate": "newData.isString() && newData.val().length <= 16" },
         "jpeg": { ".validate": "newData.isString() && newData.val().length < 6000000" },
         "ts":   { ".validate": "newData.isNumber()" },

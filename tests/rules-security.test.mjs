@@ -2,7 +2,9 @@
 // SÓ RODA sob o emulador (pula sem FIREBASE_DATABASE_EMULATOR_HOST):
 //
 //   cd firebase && firebase emulators:exec --only database --project demo-test \
-//     "cd .. && node --test tests/rules-security.test.mjs"
+//     "cd .. && node --test --test-concurrency=1 tests/*.mjs"
+//   (SERIAL obrigatório: os arquivos de emulador compartilham o banco e cada
+//    teste semeia com DELETE / — em paralelo se atropelam.)
 //
 // O emulador NÃO verifica assinatura de JWT — tokens fake (alg:none) bastam.
 
