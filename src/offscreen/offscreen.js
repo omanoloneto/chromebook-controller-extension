@@ -11,6 +11,7 @@ import {
   STORAGE_AUTH,
   STORAGE_REPLAY,
   STORAGE_CLASSVIEW,
+  STORAGE_VERSION,
 } from '../lib/ipc.js';
 import { firebaseConfig } from '../lib/firebase-config.js';
 import { FirebaseSession, STREAM_WATCHDOG_MS } from '../lib/firebase.js';
@@ -170,13 +171,17 @@ async function ensureFirebase() {
 
 /// Registra/atualiza a identidade pública do PC no banco.
 async function registrar(id, token) {
-  await fb.patch(`/devices/${id.deviceId}/meta`, {
+  const meta = {
     uid: fb.uid,
     pub: pubToB64url(id.pubRaw),
     label: id.label,
     v: 4,
-    ext: chrome.runtime.getManifest().version, // versão da extensão (app mostra)
-  });
+  };
+  // Versão da extensão (o app mostra). chrome.runtime.getManifest() NÃO existe
+  // no offscreen — o service worker grava a versão no storage; lemos daqui.
+  const ver = await storeGet(STORAGE_VERSION);
+  if (typeof ver === 'string' && ver) meta.ext = ver;
+  await fb.patch(`/devices/${id.deviceId}/meta`, meta);
   await fb.put(`/devices/${id.deviceId}/pairing/token`, token);
   await fb.put(`/device_uids/${fb.uid}`, id.deviceId);
 }

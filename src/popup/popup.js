@@ -119,9 +119,6 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 atualizarTelao();
 
-// Versão da extensão no rodapé (no lugar do antigo aviso de exclusividade).
-el.versao.textContent = 'Versão ' + chrome.runtime.getManifest().version;
-
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state, msg.detail, msg.teacher);
 });
@@ -129,6 +126,8 @@ chrome.runtime.onMessage.addListener((msg) => {
 chrome.runtime.sendMessage({ cmd: IPC.GET_STATE }).then((r) => {
   render(r?.state ?? 'connecting', undefined, r?.teacher);
   renderNumero(r?.numero ?? null, r?.label);
+  // Versão vem do SW (getManifest não é confiável fora dele).
+  el.versao.textContent = 'Versão ' + (r?.version ?? '—');
 });
 
 // Enquanto o popup está em pareamento, o token pode rotacionar (QR usado).

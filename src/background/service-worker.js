@@ -10,6 +10,7 @@ import {
   STORAGE_NAVLOG,
   STORAGE_RULES,
   STORAGE_CLASSVIEW,
+  STORAGE_VERSION,
 } from '../lib/ipc.js';
 import { isSafeHttpUrl, makeTabReport, MAX_REPORT_EVENTS } from '../lib/protocol.js';
 import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.js';
@@ -28,13 +29,23 @@ let lastTeacher = null;
 let creating = null;
 let lastHealthyAt = Date.now();
 
+// A versão vive no SW (único contexto com getManifest garantido); grava no
+// storage p/ o offscreen (registrar/meta.ext) ler via proxy.
+const VERSAO = chrome.runtime.getManifest().version;
+function gravarVersao() {
+  chrome.storage.local.set({ [STORAGE_VERSION]: VERSAO }).catch(() => {});
+}
+gravarVersao(); // todo (re)start do SW — cobre wake sem onStartup (pós-efêmero)
+
 chrome.runtime.onInstalled.addListener(() => {
+  gravarVersao();
   updateBadge('searching');
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
   ensureOffscreen();
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  gravarVersao();
   lastHealthyAt = Date.now();
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
   ensureOffscreen();
@@ -426,10 +437,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
             teacher: lastTeacher,
             label: o[STORAGE_KEYPAIR]?.label ?? null,
             numero: o[STORAGE_BINDING]?.numero ?? null,
+            version: VERSAO,
           }),
         )
         .catch(() =>
-          sendResponse({ state: lastState, teacher: lastTeacher, label: null, numero: null }),
+          sendResponse({
+            state: lastState,
+            teacher: lastTeacher,
+            label: null,
+            numero: null,
+            version: VERSAO,
+          }),
         );
       return true;
 
