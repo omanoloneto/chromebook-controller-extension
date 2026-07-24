@@ -1,5 +1,6 @@
-// Auto-reconexão: só quando preso em 'connecting', com rede, respeitando o
-// intervalo de 5s. Rodar: node --test tests/
+// Auto-reconexão: só quando preso em 'connecting', respeitando o intervalo de
+// 5s. NÃO gateia mais em navigator.onLine (preso em false no offscreen travava
+// tudo). Rodar: node --test tests/
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -10,7 +11,6 @@ const base = {
   estado: 'connecting',
   presoMs: AUTO_RECONNECT_MS,
   desdeUltimoRestartMs: AUTO_RECONNECT_MS,
-  online: true,
 };
 
 test('preso em connecting há 5s com rede → reconecta', () => {
@@ -30,10 +30,8 @@ test('menos de 5s desde o último auto-restart → espera', () => {
   assert.equal(deveAutoReconectar({ ...base, desdeUltimoRestartMs: 1000 }), false);
 });
 
-test('sem rede → não faz churn (retries internos seguem)', () => {
-  assert.equal(deveAutoReconectar({ ...base, online: false }), false);
-});
-
-test('navigator.onLine indisponível (undefined) conta como online', () => {
-  assert.equal(deveAutoReconectar({ ...base, online: undefined }), true);
+test('navigator.onLine é ignorado: reconecta mesmo com online=false', () => {
+  // O flag ficava preso em false no offscreen e travava a reconexão pra
+  // sempre — agora não conta mais (campo extra é ignorado).
+  assert.equal(deveAutoReconectar({ ...base, online: false }), true);
 });

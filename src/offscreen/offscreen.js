@@ -13,7 +13,7 @@ import {
   STORAGE_CLASSVIEW,
 } from '../lib/ipc.js';
 import { firebaseConfig } from '../lib/firebase-config.js';
-import { FirebaseSession } from '../lib/firebase.js';
+import { FirebaseSession, STREAM_WATCHDOG_MS } from '../lib/firebase.js';
 import { CloudClient } from '../lib/cloud-client.js';
 import {
   generateKeyPair,
@@ -69,14 +69,13 @@ function reiniciarConexao() {
   currentClient?.stop(); // faz o run() retornar -> o loop recomeça
 }
 
-// Auto-↻: preso em 'connecting' por 5s (com rede) = reconecta sozinho.
+// Auto-↻: preso em 'connecting' por 5s = reconecta sozinho (sem gate de rede).
 setInterval(() => {
   const agora = Date.now();
   const decide = deveAutoReconectar({
     estado: ultimoEstado,
     presoMs: agora - estadoMudouEm,
     desdeUltimoRestartMs: agora - ultimoAutoRestart,
-    online: navigator.onLine,
   });
   if (!decide) return;
   ultimoAutoRestart = agora;
@@ -84,15 +83,28 @@ setInterval(() => {
   reiniciarConexao();
 }, AUTO_RECONNECT_MS);
 
-// Rede voltou (troca de Wi-Fi/roaming entre APs da escola, saiu do modo avião):
-// reconecta NA HORA, sem esperar o tick de 5s nem o backoff interno do stream
-// chegar ao teto. Só age se não estiver 'connected' (evita blip à toa).
+// Rede voltou (troca de Wi-Fi/roaming, saiu do modo avião): reconecta na hora.
+// Best-effort (navigator.onLine é pouco confiável no offscreen — a garantia é
+// o heartbeat + o alarme do service worker).
 globalThis.addEventListener('online', () => {
   if (ultimoEstado === 'connected') return;
   ultimoAutoRestart = Date.now();
   console.log('[CdA] rede voltou — reconectando');
   reiniciarConexao();
 });
+
+// Heartbeat p/ o service worker: prova de que o offscreen está VIVO e o stream
+// recebendo eventos. Se parar de chegar (offscreen congelado no suspend, ou
+// EventSource zumbi que não dispara onDown), o alarme do SW força OFF_RESTART —
+// única recuperação que sobrevive a um offscreen travado (o alarme só recria
+// offscreen AUSENTE; a auto-reconexão e o watchdog vivem DENTRO do offscreen).
+const HEARTBEAT_MS = 20000;
+setInterval(() => {
+  const saudavel =
+    ultimoEstado === 'connected' &&
+    (currentClient?.streamAgeMs() ?? Infinity) < STREAM_WATCHDOG_MS;
+  chrome.runtime.sendMessage({ cmd: IPC.HEARTBEAT, healthy: saudavel }).catch(() => {});
+}, HEARTBEAT_MS);
 
 async function ensureIdentity() {
   if (identity) return identity;
@@ -163,6 +175,7 @@ async function registrar(id, token) {
     pub: pubToB64url(id.pubRaw),
     label: id.label,
     v: 4,
+    ext: chrome.runtime.getManifest().version, // versão da extensão (app mostra)
   });
   await fb.put(`/devices/${id.deviceId}/pairing/token`, token);
   await fb.put(`/device_uids/${fb.uid}`, id.deviceId);
@@ -232,6 +245,44 @@ async function aplicarNumeroUnidade(numero) {
   }
 }
 
+/// Tira 1 foto da webcam do aluno e devolve o JPEG em base64 (o CloudClient
+/// cifra e grava em /snapshot). getUserMedia SEM prompt exige a policy do admin
+/// `VideoCaptureAllowedUrls` com a origem desta extensão — senão rejeita com
+/// NotAllowedError (o offscreen não tem UI para pedir permissão). O LED da
+/// câmera acende enquanto captura (hardware, não desligável) e apaga no stop().
+async function capturarFotoCamera() {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: 640 }, height: { ideal: 480 } },
+      audio: false,
+    });
+  } catch (e) {
+    return { ok: false, error: 'camera_' + (e?.name ?? 'erro') };
+  }
+  try {
+    const video = document.createElement('video');
+    video.srcObject = stream;
+    video.muted = true;
+    await video.play();
+    // Warmup: sensor precisa de alguns frames para expor/focar direito.
+    await sleep(400);
+    const w = video.videoWidth || 640;
+    const h = video.videoHeight || 480;
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+    video.srcObject = null;
+    const jpegB64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
+    return { ok: true, jpegB64 };
+  } catch (e) {
+    return { ok: false, error: String(e?.message ?? e) };
+  } finally {
+    for (const t of stream.getTracks()) t.stop(); // apaga o LED
+  }
+}
+
 /// Mapeia um comando decifrado para o executor no service worker.
 async function executarComando(cmd) {
   const exec = (ipcCmd, extras) =>
@@ -264,6 +315,9 @@ async function executarComando(cmd) {
       // Resolvido aqui mesmo (offscreen tem storage-proxy + fb; o SW não é
       // necessário): numero validado pelo CloudClient.
       return aplicarNumeroUnidade(cmd.payload?.numero);
+    case MessageType.CAPTURE_CAMERA:
+      // Captura precisa de DOM/getUserMedia — roda AQUI no offscreen, não no SW.
+      return capturarFotoCamera();
     default:
       return { ok: false, error: 'tipo_desconhecido' };
   }

@@ -18,6 +18,11 @@ const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 60000;
 
+/// Teto p/ chamadas REST (auth + RTDB). Sem isto, um fetch pendurado (Wi-Fi
+/// meio-vivo / portal cativo) trava o mainLoop pra sempre — nem OFF_RESTART
+/// destrava, porque o await nunca resolve. Aborta e o loop retenta.
+const FETCH_TIMEOUT_MS = 20000;
+
 /// Códigos do Secure Token que significam "esta conta MORREU" — só aí vale
 /// criar conta anônima nova. Erro de rede, 5xx ou resposta de portal cativo
 /// NÃO entram: cair para signUp nesses casos troca o uid, e o uid antigo está
@@ -110,7 +115,7 @@ export class FirebaseSession {
         console.warn('[CdA] conta anônima morta, criando nova:', e?.message);
       }
     }
-    const res = await this.fetch(
+    const res = await this._fetch(
       `${this.authOrigin}/v1/accounts:signUp?key=${this.apiKey}`,
       {
         method: 'POST',
@@ -134,7 +139,7 @@ export class FirebaseSession {
   }
 
   async _refresh(refreshToken) {
-    const res = await this.fetch(`${this.tokenOrigin}/v1/token?key=${this.apiKey}`, {
+    const res = await this._fetch(`${this.tokenOrigin}/v1/token?key=${this.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: `grant_type=refresh_token&refresh_token=${encodeURIComponent(
@@ -185,6 +190,18 @@ export class FirebaseSession {
     for (const s of this._streams) s.close();
   }
 
+  /// fetch com teto de tempo (AbortController). Aborto vira erro transitório —
+  /// o chamador (signIn/_refresh/_request) já trata como retentável.
+  async _fetch(url, opts) {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
+    try {
+      return await this.fetch(url, { ...opts, signal: ctrl.signal });
+    } finally {
+      clearTimeout(t);
+    }
+  }
+
   // ---- REST -----------------------------------------------------------------
 
   serverTimestamp() {
@@ -200,7 +217,7 @@ export class FirebaseSession {
   /// fetch com 1 retry após refresh se o token expirou (401).
   async _request(method, path, body) {
     for (let tentativa = 0; ; tentativa++) {
-      const res = await this.fetch(this._url(path), {
+      const res = await this._fetch(this._url(path), {
         method,
         headers: { 'Content-Type': 'application/json' },
         body: body === undefined ? undefined : JSON.stringify(body),

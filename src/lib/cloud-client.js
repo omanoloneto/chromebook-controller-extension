@@ -53,6 +53,14 @@ export class CloudClient {
     this._finish('stopped');
   }
 
+  /// Idade (ms) desde o último evento recebido no stream (put/patch/keep-alive).
+  /// Grande = stream provavelmente morto (zumbi, ex.: socket derrubado no
+  /// suspend). Infinity se ainda não há stream. Usado pelo heartbeat p/ o SW.
+  streamAgeMs() {
+    const t = this._stream?._lastEventAt ?? 0;
+    return t ? Date.now() - t : Infinity;
+  }
+
   _finish(reason) {
     if (!this.running) return;
     this.running = false;
@@ -173,6 +181,21 @@ export class CloudClient {
       ack = await this.onCommand?.(msg);
     } catch (e) {
       ack = { ok: false, error: String(e?.message ?? e) };
+    }
+    // Foto da câmera (capture_camera): vai num nó próprio /snapshot cifrado —
+    // a imagem é grande demais para o ack. O ack segue só com ok/erro.
+    if (ack?.jpegB64) {
+      try {
+        const snap = await this._seal({
+          v: PROTOCOL_VERSION,
+          type: MessageType.CAMERA_SNAPSHOT,
+          id: msg.id,
+          jpegB64: ack.jpegB64,
+        });
+        await this.fb.put(`${this.base}/snapshot`, { env: snap, ts: this.fb.serverTimestamp() });
+      } catch {
+        // best-effort
+      }
     }
     try {
       const env = await this._seal({

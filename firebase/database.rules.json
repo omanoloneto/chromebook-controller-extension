@@ -13,6 +13,7 @@
           "pub":   { ".validate": "newData.isString() && newData.val().length <= 64" },
           "label": { ".validate": "newData.isString() && newData.val().length <= 40" },
           "v":     { ".validate": "newData.isNumber()" },
+          "ext":   { ".validate": "newData.isString() && newData.val().length <= 20" },
           "$other": { ".validate": false }
         },
 
@@ -57,6 +58,13 @@
         "report": {
           ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
           "env": { ".validate": "newData.isString() && newData.val().length < 262144" },
+          "ts":  { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "snapshot": {
+          ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
+          "env": { ".validate": "newData.isString() && newData.val().length < 1048576" },
           "ts":  { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         },

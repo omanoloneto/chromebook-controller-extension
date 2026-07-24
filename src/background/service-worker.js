@@ -19,9 +19,14 @@ import './session-wipe.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';
+// Sem heartbeat saudável por mais que isto = offscreen travado -> OFF_RESTART.
+// Heartbeat é a cada 20s e o alarme a cada 60s; 45s pega um travado no 1º tick
+// sem falso-positivo de um offscreen só reconectando.
+const HEARTBEAT_STALE_MS = 45000;
 let lastState = 'searching';
 let lastTeacher = null;
 let creating = null;
+let lastHealthyAt = Date.now();
 
 chrome.runtime.onInstalled.addListener(() => {
   updateBadge('searching');
@@ -30,12 +35,30 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
+  lastHealthyAt = Date.now();
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
   ensureOffscreen();
 });
 
-chrome.alarms.onAlarm.addListener((a) => {
-  if (a.name === KEEPALIVE_ALARM) ensureOffscreen();
+chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name !== KEEPALIVE_ALARM) return;
+  const criado = await ensureOffscreen();
+  // Offscreen já existia mas há muito não reporta stream saudável => TRAVADO
+  // (congelado no suspend ou EventSource zumbi). ensureOffscreen não reinicia um
+  // offscreen vivo-porém-travado — só o OFF_RESTART (incondicional) destrava.
+  // Este alarme é o ÚNICO ator de recuperação que sobrevive a um offscreen
+  // travado (a auto-reconexão e o watchdog vivem dentro dele).
+  // 'pairing' é espera legítima pelo QR (heartbeat fica unhealthy de propósito)
+  // — NÃO reiniciar, senão regenera o QR a cada minuto.
+  if (
+    !criado &&
+    lastState !== 'pairing' &&
+    Date.now() - lastHealthyAt > HEARTBEAT_STALE_MS
+  ) {
+    lastHealthyAt = Date.now(); // não re-disparar antes do reinício assentar
+    console.log('[CdA] SW: offscreen travado — forçando OFF_RESTART');
+    tellOffscreen({ cmd: IPC.OFF_RESTART }).catch(() => {});
+  }
 });
 
 // ---- Offscreen --------------------------------------------------------------
@@ -44,18 +67,22 @@ async function ensureOffscreen() {
   const contexts = await chrome.runtime.getContexts({
     contextTypes: ['OFFSCREEN_DOCUMENT'],
   });
-  if (contexts.length > 0) return;
+  if (contexts.length > 0) return false; // já existe
   if (creating) {
     await creating;
-    return;
+    return true;
   }
   creating = chrome.offscreen.createDocument({
     url: OFFSCREEN_URL,
-    reasons: ['WORKERS'],
-    justification: 'Manter a conexão com o Firebase e receber comandos do professor.',
+    // WORKERS: conexão Firebase (SSE/timers). USER_MEDIA: capturar 1 foto da
+    // webcam via getUserMedia (comando capture_camera; exige policy do admin).
+    reasons: ['WORKERS', 'USER_MEDIA'],
+    justification:
+      'Manter a conexão com o Firebase, receber comandos e tirar foto de presença pela câmera.',
   });
   await creating;
   creating = null;
+  return true; // criado agora
 }
 
 const tellOffscreen = (payload) =>
@@ -383,6 +410,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     case IPC.STATE_CHANGED:
       lastTeacher = msg.teacher ?? lastTeacher;
       updateBadge(msg.state);
+      return false;
+
+    case IPC.HEARTBEAT:
+      // Offscreen vivo e stream saudável — reseta o relógio do watchdog do SW.
+      if (msg.healthy) lastHealthyAt = Date.now();
       return false;
 
     case IPC.GET_STATE:

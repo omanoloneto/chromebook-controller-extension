@@ -1,5 +1,5 @@
 // Popup — número da unidade em destaque, status do vínculo, QR de pareamento,
-// reconectar (↻) e desvincular. No telão, oferece a página "Ver a turma".
+// reconectar (↻) e versão da extensão. No telão, oferece a página "Ver a turma".
 
 import { IPC, STORAGE_CLASSVIEW } from '../lib/ipc.js';
 import qrcode from '../lib/vendor/qrcode.js';
@@ -16,8 +16,8 @@ const el = {
   conectando: document.getElementById('conectando'),
   qr: document.getElementById('qr'),
   btnTelaCheia: document.getElementById('btn-tela-cheia'),
-  btnReset: document.getElementById('btn-reset'),
   btnReconectar: document.getElementById('btn-reconectar'),
+  versao: document.getElementById('versao'),
   telao: document.getElementById('telao'),
   btnTurma: document.getElementById('btn-turma'),
 };
@@ -119,13 +119,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
 });
 atualizarTelao();
 
-el.btnReset.addEventListener('click', async () => {
-  el.btnReset.disabled = true;
-  await chrome.runtime.sendMessage({ cmd: IPC.RESET_BIND }).catch(() => {});
-  el.btnReset.disabled = false;
-  qrTokenAtual = null; // token rotacionou — força QR novo
-  render('pairing');
-});
+// Versão da extensão no rodapé (no lugar do antigo aviso de exclusividade).
+el.versao.textContent = 'Versão ' + chrome.runtime.getManifest().version;
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.cmd === IPC.STATE_CHANGED) render(msg.state, msg.detail, msg.teacher);

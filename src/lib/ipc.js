@@ -30,6 +30,12 @@ export const IPC = Object.freeze({
 
   // offscreen -> broadcast (service worker e popup escutam)
   STATE_CHANGED: 'state:changed', // { state: 'connected'|'pairing'|'connecting', detail, teacher }
+
+  // offscreen -> service worker: prova de vida ({ healthy: stream recebendo
+  // eventos }). O SW usa p/ detectar offscreen TRAVADO (congelado no suspend /
+  // EventSource zumbi) e forçar OFF_RESTART — recuperação que sobrevive a um
+  // offscreen que parou de reconectar sozinho.
+  HEARTBEAT: 'hb',
 });
 
 export const TARGET_OFFSCREEN = 'offscreen';

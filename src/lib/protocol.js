@@ -25,6 +25,8 @@ export const MessageType = Object.freeze({
   SHOW_MESSAGE: 'show_message',
   SET_CLASS_VIEW: 'set_class_view',
   SET_UNIT: 'set_unit',
+  CAPTURE_CAMERA: 'capture_camera', // app -> ext: tira 1 foto da webcam do aluno
+  CAMERA_SNAPSHOT: 'camera_snapshot', // ext -> app: foto cifrada em /snapshot
   // Reservados (futuro):
   LOCK_SCREEN: 'lock_screen',
   UNLOCK_SCREEN: 'unlock_screen',
