@@ -322,7 +322,10 @@ export class CloudClient {
   async _presence() {
     try {
       await this.fb.put(`${this.base}/presence`, { lastSeen: this.fb.serverTimestamp() });
-      this.onState?.(true);
+      // NÃO marca 'connected' aqui: presença é um heartbeat REST de SAÍDA; o
+      // sucesso do PUT não prova que o stream de ENTRADA (comandos) está vivo.
+      // Quem afirma 'connected' é o recebimento de eventos do stream (run()).
+      // Se o PUT falha, aí sim a rede está ruim → sinaliza 'connecting'.
     } catch (e) {
       this.onState?.(false, String(e?.message ?? e));
     }
@@ -377,7 +380,16 @@ export class CloudClient {
       this._resolve = resolve;
 
       this._stream = this.fb.stream(this.base, {
-        onEvent: ({ path, data }) => this._route(path, data),
+        // Cada evento recebido (inclusive o put inicial que o RTDB manda a cada
+        // (re)conexão) prova que o stream de comandos está VIVO — é isto que
+        // afirma 'connected'. Antes só a presença REST marcava 'connected', o
+        // que MASCARAVA um stream morto com REST vivo: a UI dizia conectado, os
+        // comandos não chegavam e a auto-reconexão (que só age preso em
+        // 'connecting') nunca disparava. Ver _presence().
+        onEvent: ({ path, data }) => {
+          this.onState?.(true);
+          this._route(path, data);
+        },
         onDown: (motivo) => this.onState?.(false, motivo),
       });
 

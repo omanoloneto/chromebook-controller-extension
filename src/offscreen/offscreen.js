@@ -84,6 +84,16 @@ setInterval(() => {
   reiniciarConexao();
 }, AUTO_RECONNECT_MS);
 
+// Rede voltou (troca de Wi-Fi/roaming entre APs da escola, saiu do modo avião):
+// reconecta NA HORA, sem esperar o tick de 5s nem o backoff interno do stream
+// chegar ao teto. Só age se não estiver 'connected' (evita blip à toa).
+globalThis.addEventListener('online', () => {
+  if (ultimoEstado === 'connected') return;
+  ultimoAutoRestart = Date.now();
+  console.log('[CdA] rede voltou — reconectando');
+  reiniciarConexao();
+});
+
 async function ensureIdentity() {
   if (identity) return identity;
   const saved = await storeGet(STORAGE_KEYPAIR);
