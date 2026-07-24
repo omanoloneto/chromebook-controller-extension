@@ -13,6 +13,9 @@ import {
 } from '../lib/ipc.js';
 import { isSafeHttpUrl, makeTabReport, MAX_REPORT_EVENTS } from '../lib/protocol.js';
 import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.js';
+// Efeito colateral: registra os listeners de limpeza de sessão (desloga todos
+// os sites na virada de sessão; a conta @escolacelita re-injeta sozinha).
+import './session-wipe.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';

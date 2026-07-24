@@ -41,3 +41,5 @@ export const STORAGE_REPLAY = 'replay'; // {cmd:{sid,seq}, rulesRev, wallpaperHa
 export const STORAGE_NAVLOG = 'navlog'; // [{url, title, ts, tabId}] (log rolante)
 export const STORAGE_RULES = 'rules'; // {rev, rules:[{pattern}]} (bloqueio)
 export const STORAGE_CLASSVIEW = 'classview'; // {rev, aula, pcs, recebidoEm} (presente = este PC é o telão)
+export const STORAGE_SCHOOL_ORIGINS = 'schoolOrigins'; // string[] origins a preservar na limpeza de sessão (ausente = DEFAULT_SCHOOL_ORIGINS)
+export const STORAGE_WIPE_PENDING = 'wipePending'; // true enquanto uma limpeza de sessão não concluiu (retry no próximo onStartup)

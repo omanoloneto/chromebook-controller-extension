@@ -27,7 +27,8 @@
     "offscreen",
     "alarms",
     "wallpaper",
-    "notifications"
+    "notifications",
+    "browsingData"
   ],
   "host_permissions": [
     "https://*.firebaseio.com/*",
