@@ -84,3 +84,12 @@ diferentes** — só precisam de internet.
 - **Conta anônima apagada** (não acontece no Auth padrão; só se o projeto for
   upgradeado p/ Identity Platform com "Automatic clean-up" ligado): a extensão
   gera identidade nova e o PC precisa re-parear.
+
+## Modo nativo (Celita OS)
+
+No Celita OS a conexão com o Firebase vive no `controle-de-aula-agent`, um
+serviço do sistema (repo `celita-os`). O service worker tenta
+`connectNative('br.escola.celita.controle_de_aula')` ao iniciar
+(`src/background/native.js`); com o host presente, não cria offscreen e só
+executa comandos de abas, manda o relatório e repassa os pedidos do popup ao
+agente. Sem o host (Chromebook), nada muda.

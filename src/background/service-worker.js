@@ -17,6 +17,7 @@ import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.
 // Efeito colateral: registra os listeners de limpeza de sessão (desloga todos
 // os sites na virada de sessão; a conta @escolacelita re-injeta sozinha).
 import './session-wipe.js';
+import { Native } from './native.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';
@@ -37,23 +38,65 @@ function gravarVersao() {
 }
 gravarVersao(); // todo (re)start do SW — cobre wake sem onStartup (pós-efêmero)
 
+// ---- Modo nativo (Celita OS) -----------------------------------------------
+// No Celita a conexão vive num agente do sistema; aqui só executamos abas.
+// Sem host nativo (Chromebook), tudo abaixo segue no modo offscreen.
+
+const native = new Native({
+  onExec: (cmd, payload) => executarNativo(cmd, payload),
+  onRules: (p) => execAplicarRegras(p),
+  onClassView: (snapshot) => execAtualizarClassView({ snapshot }),
+  onState: (e) => {
+    lastTeacher = e.teacher ?? null;
+    updateBadge(e.state);
+  },
+  montarRelatorio: () => montarRelatorio(),
+});
+native.conectar();
+
+function executarNativo(cmd, payload) {
+  switch (cmd) {
+    case 'open_url':
+      return execOpenUrl(payload);
+    case 'close_tabs':
+      return execFecharAbas(payload);
+    case 'close_all_tabs':
+      return execFecharTudo(payload);
+    case 'show_message':
+      return execMostrarMensagem(payload);
+    default:
+      return Promise.resolve({ ok: false, error: 'tipo_desconhecido' });
+  }
+}
+
+/// Offscreen só quando não há agente nativo.
+async function garantirConexao() {
+  native.conectar();
+  if (native.ativo) return false;
+  return ensureOffscreen();
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   gravarVersao();
   updateBadge('searching');
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
-  ensureOffscreen();
+  garantirConexao();
 });
 
 chrome.runtime.onStartup.addListener(() => {
   gravarVersao();
   lastHealthyAt = Date.now();
   chrome.alarms.create(KEEPALIVE_ALARM, { periodInMinutes: 1 });
-  ensureOffscreen();
+  garantirConexao();
 });
 
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== KEEPALIVE_ALARM) return;
-  const criado = await ensureOffscreen();
+  const criado = await garantirConexao();
+  if (native.ativo) {
+    native.enviarRelatorio(); // batida de 1 min: o agente reenvia a cada 60 s
+    return;
+  }
   // Offscreen já existia mas há muito não reporta stream saudável => TRAVADO
   // (congelado no suspend ou EventSource zumbi). ensureOffscreen não reinicia um
   // offscreen vivo-porém-travado — só o OFF_RESTART (incondicional) destrava.
@@ -379,6 +422,7 @@ async function aplicarBloqueio(tabId, url) {
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url || changeInfo.title) native.agendarRelatorio();
   // Na troca de URL o tab.title ainda é o da página anterior; grava vazio e
   // deixa o backfill preencher quando o título novo chegar.
   if (changeInfo.url) {
@@ -390,7 +434,10 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   }
 });
 
+chrome.tabs.onRemoved.addListener(() => native.agendarRelatorio());
+
 chrome.tabs.onActivated.addListener(({ tabId }) => {
+  native.agendarRelatorio();
   chrome.tabs
     .get(tabId)
     .then((tab) => registrarEventoNav(tab))
@@ -429,6 +476,16 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return false;
 
     case IPC.GET_STATE:
+      if (native.ativo) {
+        sendResponse({
+          state: native.estado.state,
+          teacher: native.estado.teacher,
+          label: native.estado.label,
+          numero: native.estado.numero,
+          version: native.estado.version ? `${VERSAO} (agente ${native.estado.version})` : VERSAO,
+        });
+        return false;
+      }
       chrome.storage.local
         .get([STORAGE_KEYPAIR, STORAGE_BINDING])
         .then((o) =>
@@ -486,6 +543,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return true;
 
     case IPC.RECONNECT:
+      if (native.ativo) {
+        native.enviar({ t: 'reconnect' });
+        sendResponse({ ok: true });
+        return false;
+      }
       (async () => {
         // Botão ↻ do popup: garante o offscreen e refaz a conexão do zero
         // (re-auth + streams novos) — recuperação manual pós-queda de rede.
@@ -508,6 +570,11 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return true;
 
     case IPC.RESET_BIND:
+      if (native.ativo) {
+        native.enviar({ t: 'unbind' });
+        sendResponse({ ok: true });
+        return false;
+      }
       (async () => {
         // O offscreen desfaz o vínculo no RTDB (delete + rotação do token) e
         // limpa o storage via proxy.
@@ -518,6 +585,12 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       return true;
 
     case IPC.GET_PAIRING:
+      if (native.ativo) {
+        // O token rotaciona no agente; pede o atual para o próximo popup.
+        native.pedirPareamento();
+        sendResponse(native.pareamento);
+        return false;
+      }
       (async () => {
         // Dados do QR: identidade pública + token one-time (nada secreto além
         // do token, que só vale para quem vê a tela deste PC).
