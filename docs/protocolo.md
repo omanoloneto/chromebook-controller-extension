@@ -266,8 +266,8 @@ acende** durante a captura (hardware, não desligável).
 { "v":1, "type":"capture_camera", "id":"a51", "payload":{} }
 ```
 
-**`capture_screen`** (agente Celita ≥ 0.5.0) — pede **1 captura da tela** do
-aluno. Só o agente do Celita OS atende (a extensão sozinha responde
+**`capture_screen`** (agente Celita ≥ 0.5.0; app ≥ 0.16.0) — pede **1 captura
+da tela** do aluno. Só o agente do Celita OS atende (a extensão sozinha responde
 `tipo_desconhecido`): a imagem vai cifrada em `snapshot/` com
 `type: "screen_snapshot"`, mesmo nó e mesmo formato da foto da câmera. Sem
 sessão gráfica de aluno aberta: `ack {ok:false, error:"sem_sessao"}`.
@@ -417,8 +417,9 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
 ```
 
 - Só URLs `http`/`https`. Exatamente **uma** aba com `active: true`.
-- **Celita OS (agente ≥ 0.5.0):** dois campos a mais, que o app ignora até
-  aprender a exibi-los: `apps` = janelas abertas fora do navegador
+- **Celita OS (agente ≥ 0.5.0):** dois campos a mais, exibidos pelo app
+  ≥ 0.16.0 na tela do PC (ausentes no relatório da extensão, que segue só com
+  abas): `apps` = janelas abertas fora do navegador
   (`[{name, title}]`, ≤ 30, `name` ≤ 40, `title` ≤ 120) e `user` = conta
   logada (≤ 32). Navegador fechado ⇒ `tabs`/`events` vazios, `apps` continua.
 - **Caps** (extensão aplica, app revalida): `tabs` ≤ 30, `events` ≤ 20 (log
