@@ -102,6 +102,15 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   stores: "<envelope>"             # JSONs locais (turmas/nomes/regras/favoritos/
                                     # prefs/aula) cifrados com a chave do
                                     # histórico. Rules owner-only.
+
+/home/escola/                       # página inicial dos alunos (SÓ o app).
+  rev: 1757300000000                # ÚNICO nó de leitura pública do banco: quem
+  cfg: "{\"titulo\":...}"             # lê é escolacelita.com/home, uma página web
+                                    # comum, que não tem como se autenticar. O
+                                    # conteúdo é uma lista de links — sem aluno,
+                                    # sem device, sem nada sigiloso — e por isso
+                                    # vai em claro, não cifrado. Escrita só com
+                                    # conta Google (mesmo portão de /school).
 ```
 
 **Presença:** o cliente REST/SSE não tem `onDisconnect`, então presença é

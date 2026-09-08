@@ -163,6 +163,17 @@
       }
     },
 
+    "home": {
+      "escola": {
+        ".read": true,
+        ".write": "auth != null && auth.token.email != null",
+        "rev": { ".validate": "newData.isNumber()" },
+        "cfg": { ".validate": "newData.isString() && newData.val().length < 8192" },
+        "$other": { ".validate": false }
+      },
+      "$other": { ".validate": false }
+    },
+
     "wallpapers": {
       "$tUid": {
         ".write": "auth != null && (auth.uid === $tUid || auth.token.email != null)",

@@ -212,3 +212,38 @@ test('history e wallpapers da escola: qualquer professor Google', { skip }, asyn
     }),
   );
 });
+
+// A página inicial dos alunos (escolacelita.com/home) lê este nó sem login
+// nenhum: é a única leitura pública do banco. Escrever continua sendo só da
+// conta Google da escola — senão qualquer anônimo trocaria os atalhos da turma.
+test('página inicial: leitura pública, escrita só do professor Google', { skip }, async () => {
+  await semearEscola();
+  const config = { rev: 1, cfg: '{"titulo":"Celita","atalhos":[]}' };
+
+  await permitido(req('PUT', '/home/escola', { auth: PROF_G2, body: config }));
+  await permitido(req('GET', '/home/escola', {}));
+  await permitido(req('GET', '/home/escola', { auth: DEV }));
+
+  await negado(req('PUT', '/home/escola', { auth: ANON, body: config }));
+  await negado(req('PUT', '/home/escola', { body: config }));
+  await negado(req('PUT', '/home/escola', { auth: DEV, body: config }));
+});
+
+test('página inicial: recusa campo estranho e configuração gigante', { skip }, async () => {
+  await semearEscola();
+  await negado(
+    req('PUT', '/home/escola', {
+      auth: PROF_G2,
+      body: { rev: 1, cfg: '{}', script: 'x' },
+    }),
+  );
+  await negado(
+    req('PUT', '/home/escola', {
+      auth: PROF_G2,
+      body: { rev: 1, cfg: 'x'.repeat(9000) },
+    }),
+  );
+  await negado(
+    req('PUT', '/home/outra', { auth: PROF_G2, body: { rev: 1, cfg: '{}' } }),
+  );
+});
