@@ -59,6 +59,10 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
 /device_uids/{uid}: deviceId        # índice reverso (escrito pela extensão);
                                     # usado só pelas rules (gate do wallpaper)
 
+/handoff/{canal}: {pub, env, ts}    # login entregue ao app do professor no Celita OS
+                                    # (§2.1): escrito pelo celular (conta Google),
+                                    # lido e apagado pelo computador (Auth anônima)
+
 /teachers/{teacherUid}/
   devices/{deviceId}: true          # roster que o app escuta
 
@@ -169,6 +173,38 @@ Casos de borda:
   re-pareamento. Obs.: no Auth padrão contas anônimas **nunca** expiram; o
   "auto-delete" só existe se o projeto for upgradeado para **Identity
   Platform** — nesse caso, manter a limpeza automática **OFF**.
+
+### 2.1 Login do app do professor no Celita OS pelo celular
+
+O app do professor no Celita OS (`controle-de-aula-professor`) não tem SDK do
+Google. Para ter e-mail nas rules (página inicial, escola) ele **entra na conta
+do celular**: mostra um QR com uma chave X25519 efêmera e um canal aleatório;
+o celular, já logado no Google, entrega o login cifrado para essa chave.
+
+QR do computador:
+
+```json
+{ "v": 1, "t": "login", "c": "<canal 16 bytes b64url>", "pub": "<pub efêmera b64url>" }
+```
+
+Fluxo:
+
+1. **Computador** gera o par efêmero e o canal, mostra o QR e escuta
+   `/handoff/{canal}`.
+2. **Celular** lê o QR (o mesmo leitor do pareamento; `t: "login"` distingue),
+   obtém um `id_token` fresco do Google, gera um par efêmero próprio, deriva
+   `HKDF(X25519(efêmeraCelular, pubComputador))` (mesma derivação do §2) e grava
+   `/handoff/{canal} = {pub: <efêmeraCelular>, env, ts}`, com
+   `env = seal({v:1, idToken, keys: "<priv:pub do professor>", teacherName, schoolUid?})`.
+3. **Computador** abre o envelope, faz `accounts:signInWithIdp` com o `id_token`
+   (**sem** vincular a conta anônima: assume o uid do celular), adota a chave do
+   professor, guarda nome e escola, apaga o canal e reinicia o cliente. A partir
+   daí é o mesmo professor: mesmo uid, mesma chave, mesmos PCs pareados.
+
+Segurança: só quem viu o QR tem o `pub` do canal; o envelope só abre com a
+chave efêmera que nunca sai do computador; o `id_token` expira em 1 h e o canal
+é apagado ao ser consumido. As rules aceitam escrita só de conta com e-mail e
+apagamento de qualquer conta autenticada.
 
 ## 3. Transporte cifrado (por sessão)
 

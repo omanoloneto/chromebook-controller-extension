@@ -183,6 +183,16 @@
         "ts":   { ".validate": "newData.isNumber()" },
         "$other": { ".validate": false }
       }
+    },
+    "handoff": {
+      "$channel": {
+        ".read": "auth != null",
+        ".write": "auth != null && (auth.token.email != null || !newData.exists())",
+        "pub": { ".validate": "newData.isString() && newData.val().length <= 64" },
+        "env": { ".validate": "newData.isString() && newData.val().length < 16384" },
+        "ts":  { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      }
     }
   }
 }
