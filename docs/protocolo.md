@@ -344,10 +344,12 @@ redirecionamento e cai na página "Site bloqueado pelo professor".
 **`set_wallpaper`** — o envelope viaja só com o `hash`; o app grava o blob (1x,
 compartilhado pela turma) em `/wallpapers/{teacherUid} = {hash, jpeg: base64, ts}`.
 O PC busca esse nó via REST (as rules limitam a leitura a devices vinculados),
-confere o `hash` e chama `chrome.wallpaper.setWallpaper` (`CENTER_CROPPED`).
-Fora do ChromeOS: aplicação falha silenciosa (log) — comandos de estado não têm
-ack. Caps: 10 MB decodificado (`imagem_grande`); o app limita o upload a ~4 MB
-de imagem:
+confere o `hash` e aplica: no ChromeOS, `chrome.wallpaper.setWallpaper`
+(`CENTER_CROPPED`); no Celita OS, o agente grava o JPEG em
+`/var/lib/controle-de-aula/wallpaper.jpg` e aponta o `last-image` do xfdesktop
+para ele, na sessão do aluno. O app persiste o hash vigente e o reenvia a cada
+PC que (re)pareia. Caps: 10 MB decodificado (`imagem_grande`); o app limita o
+upload a ~4 MB de imagem:
 
 ```json
 { "v":1, "type":"set_wallpaper", "id":"a46", "payload":{ "hash":"9f2ab41c" } }
