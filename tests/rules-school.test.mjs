@@ -1,13 +1,14 @@
-// Rules do workspace da escola (/school/* + gate GOOGLE = auth.token.email).
+// Rules do workspace da escola (/school/* + escola fechada por /school/members).
 // SÓ RODA sob o emulador (pula sem FIREBASE_DATABASE_EMULATOR_HOST):
 //
-//   cd firebase && firebase emulators:exec --only database --project demo-test \
+//   cd firebase && firebase emulators:exec --only database,storage --project demo-test \
 //     "cd .. && node --test --test-concurrency=1 tests/*.mjs"
 //   (SERIAL obrigatório: arquivos de emulador compartilham o banco.)
 //
-// IMPORTANTE: o gate de professor é `auth.token.email != null` — NÃO
-// `auth.provider === 'google'`: o fundador fez linkWithCredential sobre a
-// conta anônima e a sessão dele emite sign_in_provider 'anonymous' + email.
+// IMPORTANTE: professor = fundador (uid de school/meta/schoolUid) OU e-mail
+// verificado com entrada em school/members. Nunca `auth.provider === 'google'`:
+// o fundador fez linkWithCredential sobre a conta anônima e a sessão dele emite
+// sign_in_provider 'anonymous' + email.
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
@@ -17,7 +18,7 @@ const NS = 'demo-test-default-rtdb';
 const skip = HOST ? false : 'requer o emulador (FIREBASE_DATABASE_EMULATOR_HOST)';
 
 const b64u = (o) => Buffer.from(JSON.stringify(o)).toString('base64url');
-function fakeToken(uid, { email, provider = 'anonymous' } = {}) {
+function fakeToken(uid, { email, provider = 'anonymous', emailVerified = true } = {}) {
   const agora = Math.floor(Date.now() / 1000);
   return (
     b64u({ alg: 'none', typ: 'JWT' }) +
@@ -25,7 +26,7 @@ function fakeToken(uid, { email, provider = 'anonymous' } = {}) {
     b64u({
       sub: uid,
       user_id: uid,
-      ...(email ? { email, email_verified: true } : {}),
+      ...(email ? { email, email_verified: emailVerified } : {}),
       iat: agora,
       exp: agora + 3600,
       auth_time: agora,
@@ -42,11 +43,21 @@ function fakeToken(uid, { email, provider = 'anonymous' } = {}) {
 
 // Fundador: uid antigo (dono dos binds), sessão ainda 'anonymous' MAS com email.
 const FUNDADOR = fakeToken('uid-prof', { email: 'fundador@gmail.com', provider: 'anonymous' });
-// Professor novo: login Google puro.
+// Professor novo: login Google puro, liberado pelo fundador em school/members.
 const PROF_G2 = fakeToken('uid-prof2', { email: 'colega@gmail.com', provider: 'google.com' });
+// Mesmo e-mail da lista, mas o provedor não verificou o endereço.
+const PROF_G2_NV = fakeToken('uid-prof2', {
+  email: 'colega@gmail.com',
+  provider: 'password',
+  emailVerified: false,
+});
+// Conta Google verificada que ninguém liberou.
+const INTRUSO = fakeToken('uid-intruso', { email: 'intruso@gmail.com', provider: 'google.com' });
 // Anônimos (sem email): device e um professor isolado alheio.
 const DEV = fakeToken('uid-device');
 const ANON = fakeToken('uid-anon');
+
+const MEMBRO_G2 = 'colega@gmail,com';
 
 async function req(method, path, { auth, body, admin } = {}) {
   const q = admin ? '' : `&auth=${auth ?? ''}`;
@@ -60,7 +71,7 @@ async function req(method, path, { auth, body, admin } = {}) {
 const permitido = async (r) => assert.equal((await r).ok, true, 'esperava permissão');
 const negado = async (r) => assert.equal((await r).ok, false, 'esperava negação');
 
-// Escola criada + device pareado com a escola (bind.teacherUid = schoolUid).
+// Escola criada + colega liberado + device pareado com a escola (bind.teacherUid = schoolUid).
 async function semearEscola() {
   await req('DELETE', '/', { admin: true });
   await req('PUT', '/school', {
@@ -68,6 +79,7 @@ async function semearEscola() {
     body: {
       meta: { schoolUid: 'uid-prof', criadoEm: 1 },
       keypair: { keys: 'PRIV:PUB', ts: 1 },
+      members: { [MEMBRO_G2]: true },
     },
   });
   await req('PUT', '/devices/d1', {
@@ -86,7 +98,7 @@ async function semearEscola() {
   });
 }
 
-test('school/meta+keypair: create-once por Google; anônimo nem lê', { skip }, async () => {
+test('school/meta+keypair: create-once pelo fundador; anônimo nem lê', { skip }, async () => {
   await req('DELETE', '/', { admin: true });
   await permitido(
     req('PUT', '/school/meta', { auth: FUNDADOR, body: { schoolUid: 'uid-prof', criadoEm: 1 } }),
@@ -94,16 +106,17 @@ test('school/meta+keypair: create-once por Google; anônimo nem lê', { skip }, 
   await permitido(
     req('PUT', '/school/keypair', { auth: FUNDADOR, body: { keys: 'PRIV:PUB', ts: 1 } }),
   );
+  await permitido(req('PUT', `/school/members/${MEMBRO_G2}`, { auth: FUNDADOR, body: true }));
   // Sobrescrever a chave = negado p/ QUALQUER professor (troca só via console).
   await negado(req('PUT', '/school/keypair', { auth: PROF_G2, body: { keys: 'HACK', ts: 2 } }));
   await negado(req('PUT', '/school/meta', { auth: PROF_G2, body: { schoolUid: 'uid-prof2', criadoEm: 2 } }));
-  // Leitura: professor Google sim; anônimo/device não.
+  // Leitura: professor liberado sim; anônimo/device não.
   await permitido(req('GET', '/school/keypair', { auth: PROF_G2 }));
   await negado(req('GET', '/school/keypair', { auth: DEV }));
   await negado(req('GET', '/school/keypair', { auth: ANON }));
 });
 
-test('devices da escola: qualquer professor Google comanda; anônimo alheio não', { skip }, async () => {
+test('devices da escola: qualquer professor liberado comanda; anônimo alheio não', { skip }, async () => {
   await semearEscola();
   // Professor novo (não é o dono do bind) lê, enfileira cmd e grava state.
   await permitido(req('GET', '/devices/d1', { auth: PROF_G2 }));
@@ -117,7 +130,7 @@ test('devices da escola: qualquer professor Google comanda; anônimo alheio não
   await negado(req('PUT', '/devices/d1/state/rules', { auth: ANON, body: 'forja' }));
 });
 
-test('bind: professor Google pareia PELA escola (teacherUid = schoolUid); token segue obrigatório', { skip }, async () => {
+test('bind: professor liberado pareia PELA escola (teacherUid = schoolUid); token segue obrigatório', { skip }, async () => {
   await semearEscola();
   await req('PUT', '/devices/d2', {
     admin: true,
@@ -138,18 +151,18 @@ test('bind: professor Google pareia PELA escola (teacherUid = schoolUid); token 
       body: { teacherUid: 'uid-x', teacherPub: 'X', teacherName: 'X', token: 'tok-3', ts: 3 },
     }),
   );
-  // Sem o token atual → negado (mesmo sendo Google).
+  // Sem o token atual → negado (mesmo liberado).
   await negado(
     req('PUT', '/devices/d2/bind', {
       auth: PROF_G2,
       body: { teacherUid: 'uid-prof', teacherPub: 'PUB_ESCOLA', teacherName: 'C', token: 'tok-velho', ts: 4 },
     }),
   );
-  // Professor Google pode desfazer o bind (esquecer PC da escola).
+  // Professor liberado pode desfazer o bind (esquecer PC da escola).
   await permitido(req('DELETE', '/devices/d1/bind', { auth: PROF_G2 }));
 });
 
-test('school/stores: chaves válidas por Google; inválida/anônimo negados', { skip }, async () => {
+test('school/stores: chaves válidas por professor liberado; inválida/anônimo negados', { skip }, async () => {
   await semearEscola();
   await permitido(
     req('PUT', '/school/stores/turmas', { auth: PROF_G2, body: { rev: 1, env: 'env' } }),
@@ -198,7 +211,7 @@ test('school/aulas: trava é do dono; takeover só expirada (>15min)', { skip },
   );
 });
 
-test('history e wallpapers da escola: qualquer professor Google', { skip }, async () => {
+test('history e wallpapers da escola: qualquer professor liberado', { skip }, async () => {
   await semearEscola();
   await permitido(
     req('PUT', '/history/uid-prof/123/meta', { auth: PROF_G2, body: 'env' }),
@@ -215,8 +228,8 @@ test('history e wallpapers da escola: qualquer professor Google', { skip }, asyn
 
 // A página inicial dos alunos (escolacelita.com/home) lê este nó sem login
 // nenhum: é a única leitura pública do banco. Escrever continua sendo só da
-// conta Google da escola — senão qualquer anônimo trocaria os atalhos da turma.
-test('página inicial: leitura pública, escrita só do professor Google', { skip }, async () => {
+// professor liberado da escola — senão qualquer anônimo trocaria os atalhos da turma.
+test('página inicial: leitura pública, escrita só de professor liberado', { skip }, async () => {
   await semearEscola();
   const config = { rev: 1, cfg: '{"titulo":"Celita","atalhos":[]}' };
 
@@ -246,4 +259,197 @@ test('página inicial: recusa campo estranho e configuração gigante', { skip }
   await negado(
     req('PUT', '/home/outra', { auth: PROF_G2, body: { rev: 1, cfg: '{}' } }),
   );
+});
+
+// Escola fechada: e-mail verificado fora de school/members é só uma conta
+// qualquer. Cobre cada porteiro que antes aceitava `auth.token.email != null`.
+test('escola fechada: membro comanda; conta Google fora da lista não', { skip }, async () => {
+  await semearEscola();
+  await req('PUT', '/archive/d1/nav/2026-09-28/k1', { admin: true, body: { env: 'env', ts: 1 } });
+  await req('PUT', '/school/aulas/d1', { admin: true, body: { uid: 'uid-prof', ts: 1, env: 'env' } });
+
+  await permitido(req('GET', '/school/keypair', { auth: PROF_G2 }));
+  await permitido(req('PUT', '/devices/d1/state/rules', { auth: PROF_G2, body: 'env' }));
+  await permitido(req('POST', '/devices/d1/cmd', { auth: PROF_G2, body: 'env' }));
+
+  // O app distingue "não há escola" de "não liberado" lendo meta.
+  await permitido(req('GET', '/school/meta', { auth: INTRUSO }));
+  await negado(req('GET', '/school/keypair', { auth: INTRUSO }));
+  await negado(req('GET', '/school/members', { auth: INTRUSO }));
+  await negado(req('GET', '/devices/d1', { auth: INTRUSO }));
+  await negado(req('GET', '/archive/d1', { auth: INTRUSO }));
+  await negado(req('PUT', '/devices/d1/state/rules', { auth: INTRUSO, body: 'forja' }));
+  await negado(req('POST', '/devices/d1/cmd', { auth: INTRUSO, body: 'forja' }));
+  await negado(req('DELETE', '/devices/d1/bind', { auth: INTRUSO }));
+  await negado(req('GET', '/school/devices', { auth: INTRUSO }));
+  await negado(req('PUT', '/school/devices/d1', { auth: INTRUSO, body: true }));
+  await negado(req('GET', '/school/stores', { auth: INTRUSO }));
+  await negado(req('PUT', '/school/stores/rules', { auth: INTRUSO, body: { rev: 9, env: 'forja' } }));
+  await negado(req('GET', '/school/aulas', { auth: INTRUSO }));
+  await negado(
+    req('PUT', '/school/aulas/d2', { auth: INTRUSO, body: { uid: 'uid-intruso', ts: 1, env: 'e' } }),
+  );
+  await negado(req('GET', '/history/uid-prof', { auth: INTRUSO }));
+  await negado(req('PUT', '/history/uid-prof/1/meta', { auth: INTRUSO, body: 'forja' }));
+  await negado(req('PUT', '/home/escola', { auth: INTRUSO, body: { rev: 1, cfg: '{}' } }));
+  await negado(req('GET', '/wallpapers/uid-prof', { auth: INTRUSO }));
+  await negado(
+    req('PUT', '/wallpapers/uid-prof', { auth: INTRUSO, body: { hash: 'x', jpeg: 'A', ts: 1 } }),
+  );
+
+  // Pareia PELA escola com o token certo: continua exigindo ser membro.
+  await req('PUT', '/devices/d2', {
+    admin: true,
+    body: { meta: { uid: 'uid-d2', pub: 'P2', label: 'PC 2', v: 4 }, pairing: { token: 'tok-2' } },
+  });
+  await negado(
+    req('PUT', '/devices/d2/bind', {
+      auth: INTRUSO,
+      body: { teacherUid: 'uid-prof', teacherPub: 'PUB_ESCOLA', teacherName: 'I', token: 'tok-2', ts: 2 },
+    }),
+  );
+
+  // O ack é apagado por quem comanda: membro sim, fora da lista não.
+  await req('PUT', '/devices/d1/ack/a1', { admin: true, body: 'env' });
+  await negado(req('DELETE', '/devices/d1/ack/a1', { auth: INTRUSO }));
+  await permitido(req('DELETE', '/devices/d1/ack/a1', { auth: PROF_G2 }));
+});
+
+test('escola fechada: e-mail da lista sem email_verified é negado', { skip }, async () => {
+  await semearEscola();
+  await negado(req('GET', '/school/keypair', { auth: PROF_G2_NV }));
+  await negado(req('GET', '/devices/d1', { auth: PROF_G2_NV }));
+  await negado(req('PUT', '/devices/d1/state/rules', { auth: PROF_G2_NV, body: 'forja' }));
+  await negado(req('POST', '/devices/d1/cmd', { auth: PROF_G2_NV, body: 'forja' }));
+  await negado(req('GET', `/school/members/${MEMBRO_G2}`, { auth: PROF_G2_NV }));
+});
+
+test('escola fechada: fundador sem entrada em members mantém acesso', { skip }, async () => {
+  await semearEscola();
+  const r = await req('GET', '/school/members/fundador@gmail,com', { admin: true });
+  assert.equal(await r.json(), null, 'fundador não está na lista');
+
+  await permitido(req('GET', '/school/keypair', { auth: FUNDADOR }));
+  await permitido(req('GET', '/school/members', { auth: FUNDADOR }));
+  await permitido(req('GET', '/devices/d1', { auth: FUNDADOR }));
+  await permitido(req('PUT', '/devices/d1/state/rules', { auth: FUNDADOR, body: 'env' }));
+  await permitido(req('POST', '/devices/d1/cmd', { auth: FUNDADOR, body: 'env' }));
+  await permitido(req('PUT', '/school/stores/names', { auth: FUNDADOR, body: { rev: 1, env: 'e' } }));
+  await permitido(req('GET', '/archive/d1', { auth: FUNDADOR }));
+});
+
+test('escola do zero: fundador cria meta e keypair com members vazio', { skip }, async () => {
+  await req('DELETE', '/', { admin: true });
+  await permitido(
+    req('PUT', '/school/meta', { auth: FUNDADOR, body: { schoolUid: 'uid-prof', criadoEm: 1 } }),
+  );
+  await permitido(
+    req('PUT', '/school/keypair', { auth: FUNDADOR, body: { keys: 'PRIV:PUB', ts: 1 } }),
+  );
+  // O agente (conta anônima) só precisa do schoolUid; o resto de meta não.
+  await permitido(req('GET', '/school/meta/schoolUid', { auth: DEV }));
+  await negado(req('GET', '/school/meta', { auth: DEV }));
+
+  // Mesma criação num PATCH multi-caminho.
+  await req('DELETE', '/', { admin: true });
+  await permitido(
+    req('PATCH', '/', {
+      auth: FUNDADOR,
+      body: {
+        'school/meta': { schoolUid: 'uid-prof', criadoEm: 1 },
+        'school/keypair': { keys: 'PRIV:PUB', ts: 1 },
+      },
+    }),
+  );
+  const r = await req('GET', '/school/keypair/keys', { admin: true });
+  assert.equal(await r.json(), 'PRIV:PUB');
+
+  // Criar escola exige e-mail verificado.
+  await req('DELETE', '/', { admin: true });
+  const naoVerificado = fakeToken('uid-prof', {
+    email: 'fundador@gmail.com',
+    provider: 'password',
+    emailVerified: false,
+  });
+  await negado(
+    req('PUT', '/school/meta', { auth: naoVerificado, body: { schoolUid: 'uid-prof', criadoEm: 1 } }),
+  );
+});
+
+test('não membro não sequestra a escola: meta alheia e keypair replantada', { skip }, async () => {
+  await req('DELETE', '/', { admin: true });
+  await negado(
+    req('PUT', '/school/meta', { auth: INTRUSO, body: { schoolUid: 'uid-prof', criadoEm: 1 } }),
+  );
+  await negado(
+    req('PATCH', '/', {
+      auth: INTRUSO,
+      body: {
+        'school/meta': { schoolUid: 'uid-prof', criadoEm: 1 },
+        'school/keypair': { keys: 'HACK', ts: 1 },
+      },
+    }),
+  );
+  // Sem meta, ninguém planta a chave.
+  await negado(req('PUT', '/school/keypair', { auth: INTRUSO, body: { keys: 'HACK', ts: 1 } }));
+
+  // Keypair apagada pelo console: só o fundador repõe.
+  await semearEscola();
+  await req('DELETE', '/school/keypair', { admin: true });
+  await negado(req('PUT', '/school/keypair', { auth: INTRUSO, body: { keys: 'HACK', ts: 2 } }));
+  await negado(req('PUT', '/school/keypair', { auth: PROF_G2, body: { keys: 'HACK', ts: 2 } }));
+  await negado(req('PUT', '/school/keypair', { auth: ANON, body: { keys: 'HACK', ts: 2 } }));
+  await permitido(req('PUT', '/school/keypair', { auth: FUNDADOR, body: { keys: 'PRIV:PUB', ts: 3 } }));
+});
+
+test('school/members: só o fundador escreve; formato da chave validado', { skip }, async () => {
+  await semearEscola();
+  await permitido(req('PUT', '/school/members/novo@escola,com,br', { auth: FUNDADOR, body: true }));
+  await permitido(req('DELETE', '/school/members/novo@escola,com,br', { auth: FUNDADOR }));
+  await permitido(
+    req('PATCH', '/school/members', {
+      auth: FUNDADOR,
+      body: { "o'neil+aula@escola,com": true, 'ana_b-c@x-y,com': true },
+    }),
+  );
+
+  // Autoliberação e liberação por colega são negadas.
+  await negado(req('PUT', '/school/members/intruso@gmail,com', { auth: INTRUSO, body: true }));
+  await negado(req('PUT', '/school/members/amigo@gmail,com', { auth: PROF_G2, body: true }));
+  await negado(req('DELETE', `/school/members/${MEMBRO_G2}`, { auth: PROF_G2 }));
+  await negado(req('PUT', '/school/members/x@y,com', { auth: DEV, body: true }));
+
+  // Valor só `true`; chave minúscula, com @, sem caracteres fora do padrão.
+  await negado(req('PUT', '/school/members/novo@escola,com', { auth: FUNDADOR, body: 'sim' }));
+  await negado(req('PUT', '/school/members/novo@escola,com', { auth: FUNDADOR, body: false }));
+  await negado(req('PUT', '/school/members/Novo@escola,com', { auth: FUNDADOR, body: true }));
+  await negado(req('PUT', '/school/members/semarroba,com', { auth: FUNDADOR, body: true }));
+  await negado(req('PUT', '/school/members/a@b@c,com', { auth: FUNDADOR, body: true }));
+  await negado(req('PUT', '/school/members/a%20b@c,com', { auth: FUNDADOR, body: true }));
+});
+
+test('school/members: cada um lê só a própria entrada; membro lê a lista', { skip }, async () => {
+  await semearEscola();
+  await permitido(req('GET', '/school/members/intruso@gmail,com', { auth: INTRUSO }));
+  await negado(req('GET', `/school/members/${MEMBRO_G2}`, { auth: INTRUSO }));
+  await negado(req('GET', '/school/members', { auth: INTRUSO }));
+  await negado(req('GET', `/school/members/${MEMBRO_G2}`, { auth: DEV }));
+
+  const propria = await req('GET', `/school/members/${MEMBRO_G2}`, { auth: PROF_G2 });
+  assert.equal(propria.ok, true);
+  assert.equal(await propria.json(), true);
+  await permitido(req('GET', '/school/members', { auth: PROF_G2 }));
+});
+
+test('school/members: maiúsculas e pontos do e-mail casam com a chave', { skip }, async () => {
+  await semearEscola();
+  await req('PUT', '/school/members/ana,silva@escola,com,br', { admin: true, body: true });
+  const ana = fakeToken('uid-ana', { email: 'Ana.Silva@Escola.COM.br', provider: 'google.com' });
+
+  await permitido(req('GET', '/school/keypair', { auth: ana }));
+  await permitido(req('POST', '/devices/d1/cmd', { auth: ana, body: 'env' }));
+  await permitido(req('GET', '/school/members/ana,silva@escola,com,br', { auth: ana }));
+
+  const parecida = fakeToken('uid-ana2', { email: 'Ana.Silva@Escola.com', provider: 'google.com' });
+  await negado(req('GET', '/school/keypair', { auth: parecida }));
 });

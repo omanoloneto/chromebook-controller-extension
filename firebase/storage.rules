@@ -1,0 +1,16 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    match /fotos/{deviceUid}/{day}/{file} {
+      allow create, update: if request.auth != null && request.auth.uid == deviceUid
+        && day.matches('^[0-9]{4}-[0-9]{2}-[0-9]{2}$')
+        && file.matches('^[0-9]{13}_[A-Za-z0-9_-]{22}[.]bin$')
+        && request.resource.size < 400 * 1024;
+      allow get: if request.auth != null && request.auth.token.get('email_verified', false) == true;
+      allow delete: if request.auth != null && request.auth.uid == deviceUid;
+    }
+    match /{all=**} {
+      allow read, write: if false;
+    }
+  }
+}
