@@ -12,8 +12,10 @@ internet.
 A criptografia ponta-a-ponta **continua a mesma do v3**: X25519 + HKDF derivam a
 chave de sessão; comandos/relatórios/acks viajam como **envelopes AES-256-GCM
 opacos** — o Firebase nunca vê o conteúdo. Em claro no banco ficam apenas:
-metadados de pareamento (chaves públicas, `deviceId`, `label`), presença e o
-blob do papel de parede (risco aceito, como no v3).
+metadados de pareamento (chaves públicas, `deviceId`, `label`), presença, o
+blob do papel de parede (risco aceito, como no v3) e os metadados do arquivo da
+unidade (dias, horários do índice, tamanhos — §7). As fotos arquivadas ficam no
+**Cloud Storage** do mesmo projeto (plano Blaze), também cifradas ponta a ponta.
 
 ```
 CELULAR (app, professor)          RTDB          CHROMEBOOK (extensão, aluno)
@@ -29,7 +31,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
 ```
 /devices/{deviceId}/
   meta/ {uid, pub, label, v:4, ext} # claro; escrito pela EXTENSÃO (uid = Auth anônima;
-                                    # ext = versão da extensão, exibida no app)
+                                    # ext = versão da extensão, exibida no app;
+                                    # no Celita OS, celita-<versão do pacote> — §6)
   pairing/ {token}                  # token one-time do QR; ninguém lê (só as rules);
                                     # rotacionado após cada bind e cada unbind
   bind/ {teacherUid, teacherPub, teacherName, token, ts, numero?}
@@ -80,14 +83,29 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # histórico antigo indecifrável. Rules:
                                     # owner-only. Retenção: até apagar na UI.
 
-/school/                            # workspace da escola (app >= 0.15; SÓ o app —
-  meta/ {schoolUid, criadoEm}       # a extensão NUNCA lê /school). Gate nas rules:
-  keypair/ {keys, ts}               # professor = auth Google (auth.token.email).
-                                    # keys = keypair da ESCOLA em claro (risco
-                                    # aceito: modelo aberto — qualquer login
-                                    # Google do app entra). Create-once: troca
-                                    # de chave só pelo console. schoolUid = uid
-                                    # do FUNDADOR (bind/history/wallpaper dele).
+/school/                            # workspace da escola (app >= 0.15; SÓ o app,
+                                    # o GTK do Celita e — só schoolUid — o agente;
+                                    # a extensão NUNCA lê /school). Escola
+                                    # FECHADA: porteiro = MEMBRO (§4).
+  meta/ {schoolUid, criadoEm}       # schoolUid = uid do FUNDADOR (bind/history/
+                                    # wallpaper dele). meta: lida por qualquer conta
+                                    # com e-mail (separa "não há escola" de "não
+                                    # liberado"); meta/schoolUid: lida por qualquer
+                                    # conta autenticada, inclusive a anônima do
+                                    # agente (§7.1). Create-once, pelo próprio
+                                    # fundador (e-mail verificado).
+  keypair/ {keys, ts}               # keys = keypair da ESCOLA em claro, lida só
+                                    # por MEMBRO. Create-once, só por quem já é o
+                                    # meta/schoolUid (meta primeiro, depois keypair;
+                                    # ou as duas num PATCH). Troca = console.
+  members/{emailKey}: true          # e-mails liberados pelo fundador (Ajustes →
+                                    # Professores da escola). emailKey = e-mail em
+                                    # minúsculas com todo "." trocado por ","
+                                    # (ana.silva@escola.com.br → ana,silva@escola,com,br);
+                                    # exibir trocando "," por ".". Só o fundador
+                                    # escreve; MEMBRO lê a lista; cada conta lê a
+                                    # própria entrada. O fundador não precisa de
+                                    # entrada (entra pelo uid).
   devices/{deviceId}: true          # roster único da escola
   stores/{k}: {rev, env}            # k = turmas|rules|units|names; env =
                                     # arquivo local inteiro {json} cifrado com
@@ -113,8 +131,31 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # comum, que não tem como se autenticar. O
                                     # conteúdo é uma lista de links — sem aluno,
                                     # sem device, sem nada sigiloso — e por isso
-                                    # vai em claro, não cifrado. Escrita só com
-                                    # conta Google (mesmo portão de /school).
+                                    # vai em claro, não cifrado. Escrita só por
+                                    # MEMBRO da escola (§4). No Celita OS o
+                                    # agente também lê: `cfg.url` vira a política
+                                    # do Chromium da página inicial (§6).
+
+/archive/{deviceId}/                # arquivo de 15 dias da unidade (SÓ Celita OS,
+  nav/{dia}/{pushId}: {env, ts}     # SÓ PC vinculado à escola — §7). Gravado pelo
+                                    # agente; lido pelo app. nav = lotes nav-v1
+                                    # (env = envelope, ts = serverTimestamp).
+  fotos/{dia}/{ts13}: {u, r}        # índice das fotos: ts13 = ms com 13 dígitos;
+                                    # u = uid anônimo do agente que enviou; r =
+                                    # 16 bytes aleatórios em base64url (22 chars).
+                                    # dia = AAAA-MM-DD em UTC−3 (§7.2). Fora de
+                                    # /devices/{id} de propósito: agente e
+                                    # extensão fazem stream do nó inteiro.
+```
+
+**Cloud Storage** (bucket `controle-de-aula-f53bd.firebasestorage.app`):
+
+```
+fotos/{uid}/{dia}/{ts13}_{r}.bin    # objeto foto-v1 (§7.3), < 400 KiB; uid, dia,
+                                    # ts13 e r iguais aos do índice. Apagado pela
+                                    # regra de ciclo de vida do bucket (idade > 15
+                                    # dias, prefixo fotos/): firebase/storage-
+                                    # lifecycle.json, aplicada no console (§8).
 ```
 
 **Presença:** o cliente REST/SSE não tem `onDisconnect`, então presença é
@@ -336,20 +377,35 @@ conecta atrasado simplesmente **lê `state/*` ao conectar** (o RTDB persiste).
 Sem ack para comandos de estado (aplicação é idempotente e guardada por
 `rev`/`hash`).
 
-**`set_rules`** — snapshot **completo** das regras de bloqueio (lista vazia
-limpa tudo). Só regras de **bloqueio** viajam; regras de **alerta** são
-avaliadas apenas no celular. O snapshot **pode variar por PC**: liberações
-concedidas pelo professor durante a aula (um site liberado só para um PC) são
-simplesmente omitidas do snapshot daquele device — o cliente não sabe nem
-precisa saber que existe uma exceção. `rev` = epoch-ms **monotônico por
-distribuição** (muda também quando uma liberação entra/sai, não só na edição
-das regras). Caps (nos dois lados): ≤ 1000 regras, `pattern` ≤ 200 chars:
+**`set_rules`** — snapshot **completo** das regras (lista vazia limpa tudo).
+`rules` = regras de **bloqueio** ("Bloquear (e me avisar)"); `alerts` = regras
+de **aviso** ("Só me avisar"). O snapshot **pode variar por PC**: liberações
+concedidas pelo professor (um site liberado só para um PC, com ou sem aula)
+são simplesmente omitidas de `rules` daquele device — o cliente não sabe nem
+precisa saber que existe uma exceção. `alerts` sai de **todas** as regras de
+aviso, sem passar pelo filtro de liberações (liberação só afeta bloqueio). No
+telão (PC do professor) as duas listas vão vazias. `rev` = epoch-ms
+**monotônico por distribuição** (muda também quando uma liberação entra/sai,
+não só na edição das regras). Limitação conhecida: as liberações ficam só no
+celular de quem liberou; se outro professor editar as regras de sites, o
+snapshot dele vai sem aquela liberação e o PC volta a bloquear (erro para o
+lado seguro). Caps (nos dois lados, `rules` e `alerts`):
+≤ 1000 regras, `pattern` ≤ 200 chars, mesma normalização:
 
 ```json
 { "v":1, "type":"set_rules", "id":"a45",
   "payload":{ "rev":1767369600000,
-    "rules":[ { "pattern":"youtube.com" }, { "pattern":"reddit.com/r/games" } ] } }
+    "rules":[ { "pattern":"youtube.com" }, { "pattern":"reddit.com/r/games" } ],
+    "alerts":[ { "pattern":"jogos.example.com" } ] } }
 ```
+
+- **`alerts`** (app e GTK do Celita desta entrega): enviado **sempre** (lista,
+  possivelmente vazia). O agente do Celita guarda `{rev, rules, alerts}` e usa
+  `alerts` só no arquivo da unidade (foto e selo "Aviso", §7); chave `alerts`
+  **ausente** (celular com app antigo) = mantém a lista anterior. O agente
+  **nunca** repassa `alerts` à extensão; a extensão ignora a chave (chaves
+  desconhecidas são ignoradas). A notificação ao professor continua avaliada
+  no celular, para bloqueio e aviso.
 
 O cliente persiste as regras (`chrome.storage`) — o bloqueio continua valendo
 **offline**. A navegação bloqueada é registrada no navlog **antes** do
@@ -449,7 +505,8 @@ chave de sessão nova. Cliente < 0.4.6 ignora a rota — inofensivo.
 
 ### `tab_report` (PC → professor)
 
-Monitoramento **somente de URLs/títulos — sem captura de tela**. O envelope é
+Monitoramento **somente de URLs/títulos** (as imagens vão por outros caminhos:
+`snapshot/` sob demanda e o arquivo da unidade, §7). O envelope é
 E2E: o Google só vê ciphertext. O PC **sobrescreve** `report = {env, ts}` quando
 o estado muda (fingerprint das abas) **ou** a cada **60s** (heartbeat de report;
 a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v3:
@@ -469,6 +526,13 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
   abas): `apps` = janelas abertas fora do navegador
   (`[{name, title}]`, ≤ 30, `name` ≤ 40, `title` ≤ 120) e `user` = conta
   logada (≤ 32). Navegador fechado ⇒ `tabs`/`events` vazios, `apps` continua.
+  `apps` segue o **critério da barra de tarefas**, lido direto do X
+  (`python3-xlib`, sem XFCE e sem lista de nomes): janelas de
+  `_NET_CLIENT_LIST` do tipo NORMAL (ou sem tipo e sem `WM_TRANSIENT_FOR`) e
+  sem `_NET_WM_STATE_SKIP_TASKBAR`. O navegador (WM_CLASS `voges`/`chromium`)
+  só some da lista quando há relatório fresco da extensão; sem ele, aparece
+  como "Google Chrome". `name` = `Name=` do `.desktop` cujo `StartupWMClass`
+  (ou nome do arquivo) casa com o WM_CLASS; reserva `/proc/<pid>/comm`.
 - **Caps** (extensão aplica, app revalida): `tabs` ≤ 30, `events` ≤ 20 (log
   rolante completo), `url` ≤ 300 chars, `title` ≤ 120 chars.
 - O app deduplica `events` por `(ts, url)` — robusto a relatórios perdidos.
@@ -495,14 +559,69 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - `meta` — gravável pelo device; `meta/uid` é **first-write-wins** (fixa o uid).
 - `pairing` — gravável só pelo device; **ninguém lê** (as rules leem por dentro).
 - `bind` — criação/atualização só com `token == pairing/token` atual **e** (vazio
-  OU mesmo `teacherUid`) → TOFU no servidor. Delete: device ou professor vinculado.
-- `state`, `cmd` — graváveis só por `bind/teacherUid`; em `cmd` o device pode
+  OU mesmo `teacherUid`) → TOFU no servidor. Delete: device, professor vinculado
+  ou MEMBRO da escola.
+- `state`, `cmd` — graváveis por `bind/teacherUid` ou MEMBRO; em `cmd` o device pode
   apenas **deletar** (consumir).
 - `report`, `ack`, `presence` — graváveis só pelo device (`meta/uid`); em `ack`
   o professor pode apenas deletar.
-- Leitura de `/devices/{id}` — só o device e o professor vinculado.
+- Leitura de `/devices/{id}` — o device, o professor vinculado e MEMBRO da escola.
 - `/wallpapers/{tUid}` — escrita só do dono; leitura do dono ou de device cujo
   `bind/teacherUid == tUid` (resolvido via `/device_uids/{auth.uid}`).
+
+**Escola fechada — expressão MEMBRO** (inline em cada regra que antes usava
+`auth.token.email != null` como porteiro da escola):
+
+```
+(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))
+```
+
+O `replace` do RTDB é literal e troca **todas** as ocorrências (provado no
+emulador). O fundador passa pelo uid, sem entrada em `members`; os demais
+precisam de e-mail **verificado** e da entrada `true`.
+
+- MEMBRO vale em: `devices/{id}/.read`; as cláusulas de e-mail de `bind`;
+  `state`; `cmd`; `ack/{pushId}`; `school/keypair/.read`; `school/devices`,
+  `stores` e `aulas`; `history/{tUid}`; `home/escola/.write`; `wallpapers/{tUid}`.
+- Continuam como antes: `handoff`, `teachers`, `backup`, `device_uids`, os
+  caminhos do dono do PC (`meta/uid`) e os do professor isolado
+  (`bind/teacherUid === auth.uid`).
+- `school/meta` — `.read` = conta com e-mail; `schoolUid/.read` = qualquer
+  conta autenticada; `.write` = só criação (`!data.exists()`), por conta com
+  e-mail verificado, com `schoolUid === auth.uid`.
+- `school/keypair/.write` = só criação, e só se `meta/schoolUid` (já gravado
+  ou no mesmo PATCH) for o próprio `auth.uid`.
+- `school/members` — `.read` = MEMBRO; `.write` = só o fundador;
+  `members/{emailKey}/.read` = a própria conta (e-mail verificado, chave
+  igual); `.validate` = valor `true` e chave `^[a-z0-9,_+'-]+@[a-z0-9,-]+$`
+  (o app recusa e-mails com `$ # [ ] /` ou espaço).
+
+**Arquivo `/archive/{deviceId}`** — DONO = `devices/{id}/meta/uid === auth.uid`;
+ESCOLA = `school/meta/schoolUid` existe **e** `devices/{id}/bind/teacherUid`
+é igual a ele (a guarda `exists()` impede `null === null` num PC sem vínculo).
+
+- `.read` = DONO ou MEMBRO; `.write` no nó inteiro = só apagar, por DONO ou
+  MEMBRO.
+- `nav/{dia}` e `fotos/{dia}` — gravar = DONO **e** ESCOLA; apagar = DONO ou
+  MEMBRO. `dia` casa `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` e o valor precisa ter
+  filhos (nada de valor cru no dia).
+- `nav/{dia}/{k}` = `{env: string < 65536, ts: number}`, nada mais.
+- `fotos/{dia}/{ts13}` — `ts13` casa `^[0-9]{13}$`; `{u, r}` com
+  `u === auth.uid` e `r` casando `^[A-Za-z0-9_-]{22}$`, nada mais.
+- Qualquer outro filho de `archive/{id}` é recusado.
+
+**Storage** — arquivo canônico `firebase/storage.rules` (espelhado nos dois
+repos, como o `database.rules.json`; o `firebase.json` dos dois aponta as duas
+rules e sobe os emuladores `database` e `storage`):
+
+- `fotos/{deviceUid}/{day}/{file}` — `create`/`update` só pelo próprio
+  `deviceUid`, com `day` no formato acima, `file` casando
+  `^[0-9]{13}_[A-Za-z0-9_-]{22}[.]bin$` e tamanho < 400 KiB (`update`
+  existe para o reenvio após timeout ser inofensivo); `get` = qualquer conta
+  com `email_verified`; `delete` = só o próprio `deviceUid`.
+- **Sem `list`** e todo o resto negado: o índice vive no RTDB atrás de
+  MEMBRO e o nome leva 128 bits aleatórios (`r`), então só quem lê o índice
+  monta o caminho.
 
 ## 5. Segurança (resumo)
 
@@ -523,12 +642,28 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   alunos VINCULADOS durante aulas ativas — cifrado (só o professor decifra),
   apagável na UI (por aula, por aluno ou tudo). Recomenda-se transparência
   com escola/responsáveis.
-- **Workspace da escola (aberto):** qualquer conta Google que use o app entra
-  no workspace e lê a chave da escola — risco aceito pelo usuário (escola
-  pequena). Mitigação futura anotada: restringir por domínio de e-mail nas
-  rules (`auth.token.email.endsWith(...)`). O gate de professor nas rules é
-  `auth.token.email != null` — NUNCA `auth.provider` (conta linkada emite
-  sign_in_provider 'anonymous' + email).
+- **Escola fechada (lista de e-mails):** só o fundador e os e-mails que ele
+  liberou em `/school/members` (Ajustes → Professores da escola) leem a chave
+  da escola e os nós da escola. Quem não foi liberado vê "Seu e-mail (x) ainda
+  não foi liberado. Peça ao professor que criou a escola para liberar em
+  Ajustes → Professores da escola." (mesmo texto no app e no GTK do Celita),
+  sem sair da escola nem mexer na chave. Ao abrir, o app confere a própria
+  entrada, mas erro de rede ou demora (> 10 s) deixa seguir — as rules barram
+  no servidor e o `permission-denied` do roster leva ao mesmo aviso; "Entrar
+  na escola" só adota a chave depois de conferir. Limites registrados: o
+  fechamento **não é retroativo** (até o deploy, qualquer conta Google lia a
+  chave) e tirar alguém de `members` **não revoga** a chave que já está no
+  celular/backup dele — revogar de verdade = trocar a keypair da escola e
+  parear de novo. O porteiro nas rules usa `auth.token.email` — NUNCA
+  `auth.provider` (conta linkada emite sign_in_provider 'anonymous' + email).
+- **Arquivo da unidade (§7):** fotos e histórico cifrados ponta a ponta com
+  a chave de sessão do par PC↔escola; 15 dias; só Celita OS; só PC vinculado
+  à escola. Metadados em claro aceitos: dias, `ts13` do índice, tamanhos dos
+  objetos. O `get` do Storage exige só e-mail verificado (as rules do Storage
+  não leem o RTDB): quem guardou caminhos do índice (ex.: ex-membro) ainda
+  baixa o objeto cifrado até ele expirar. Sem aviso visível no PC; a escola,
+  como controladora, informa os responsáveis pelos próprios canais (LGPD
+  art. 14).
 - **Requisitos do console:** Auth anônima ON; rules publicadas. (Auth padrão
   não apaga contas anônimas; só com upgrade p/ Identity Platform existe
   "Automatic clean-up" — manter OFF nesse caso.)
@@ -546,5 +681,160 @@ ninguém abriu o navegador, `meta/ext` vem como `celita-<versão>`, e os tipos
 cliente. O pareamento por QR é o mesmo (a extensão exibe o QR que o agente
 gera).
 
-## 7. Tipos reservados (futuro)
+- **`meta/ext` = `celita-<versão do pacote>`**: o build do `.deb` grava a
+  versão do pacote no `VERSION` do agente (e falha se não trocar exatamente
+  uma linha). O app mostra só o número, entre parênteses, ao lado do nome do
+  PC (`celita-0.10.0` → `0.10.0`; `0.4.11` da extensão → `0.4.11`).
+- **Página inicial:** o agente lê `/home/escola` (público) ao conectar, a
+  cada sessão nova e a cada 60 s. Com resposta 200 e `cfg.url` válida
+  (http/https, ≤ 2048) grava a política gerenciada
+  `/etc/chromium/policies/managed/controle-de-aula-inicio.json`
+  (`HomepageLocation`, `RestoreOnStartupURLs`, botão Início), só se mudou;
+  nó `null` ou sem `url` válida apaga o arquivo; erro de rede/HTTP não mexe.
+  A nova aba continua sendo a página do Celita (não redireciona).
+- **Chamadas laterais** (arquivo, Storage, `/home/escola`,
+  `school/meta/schoolUid`): 401/403 renova o token no máximo 1 vez a cada
+  10 min, sem reconectar os streams; negação persistente = backoff de 10 min
+  daquela funcionalidade.
+
+## 7. Arquivo da unidade (fotos e histórico — Celita OS)
+
+Pedido do usuário (2026-09-28). Só o agente do Celita grava; só o app lê.
+Chave = **session key do par PC↔escola** (a mesma dos reports). A extensão
+dos Chromebooks (ChromeOS) não participa.
+
+### 7.1 Quem coleta e quando
+
+- **Só PC vinculado à escola:** `bind.teacherUid == /school/meta/schoolUid`
+  (o agente lê `schoolUid` com a conta anônima, guarda em cache e revê a cada
+  conexão). Fora disso (professor isolado, que é anônimo e não teria como ver
+  as fotos) não fotografa, não arquiva e descarta as filas. Desvincular
+  descarta filas e cursores; o que já subiu fica (a retenção cuida).
+- **Fotos (webcam) em qualquer conta** — aluno ou professor, inclusive no PC
+  do professor: sessão gráfica ativa de conta humana (logind: Class=user,
+  State=active, x11/wayland, uid ≥ 1000). Foto `login` ~10 s depois da entrada
+  na conta; depois `login + 30 min·k` (`periodica`). Falha de captura: repete
+  em 60 s, até 3 vezes, sem mexer no agendamento. Sessão que termina antes da
+  foto de login não gera foto. Sem aviso visível no PC.
+- **Tentativas** (`bloqueado`/`alerta`) e **histórico**: só nas contas
+  controladas (onde a extensão roda e manda `report` pela ponte). O agente
+  compara cada evento novo com `rules` (→ `bloqueado`, tem precedência) e
+  `alerts` (→ `alerta`) pelo matching normativo; tentativa tira foto na hora,
+  no máximo 1 a cada 60 s (evento dentro da janela reaproveita a última foto,
+  se ela saiu) e não mexe no agendamento. O evento só ganha `foto` se a
+  captura deu certo.
+- Eventos com `ts` antes da entrada na conta (o navlog da extensão sobrevive
+  entre sessões) ou mais de 60 s no futuro são ignorados. Dois cursores por
+  sessão: um de exame (detecção) e um de envio (histórico, só avança com POST
+  bem-sucedido), com dedup `ts|url` na fronteira.
+- **Fila local** em `/var/lib/controle-de-aula`: toda foto é cifrada e gravada
+  primeiro em `fotos-pendentes/` (dir 0700, arquivos 0600, teto 48, descarta
+  > 15 dias) e só depois enviada; o histórico passa por `nav-pendente.json`
+  (0600, teto 2000 eventos, descarta > 15 dias).
+
+### 7.2 Dia e relógio
+
+- **Dia** = data de `(ts_ms − 3 h)` em UTC (`AAAA-MM-DD`) — São Paulo é UTC−3
+  fixo desde 2019. Mesma função no agente e no app (paridade testada perto da
+  meia-noite UTC). O app nunca usa a data local do celular para nomes de nó;
+  horas exibidas ficam no fuso do celular.
+- **Relógio do PC:** o agente mede `offset = Date das respostas do Firebase
+  − hora local` (RTDB e Storage; respostas sem `Date` não contam). Só com
+  `|offset| > 2 min` o offset é somado ao que **sai** do PC: `ts` e nome da
+  foto, `ts` dos eventos do lote, `login` do lote e do header, dia e
+  retenção. Comparações internas (entrada na conta, cursores, dedup) ficam no
+  relógio local cru, o mesmo da extensão e do logind — uma mudança de offset
+  nunca reclassifica eventos. `login` é corrigido uma vez, ao criar o registro
+  da sessão.
+
+### 7.3 Foto arquivada ("foto-v1") — binário, sem base64
+
+```
+objeto    = nonce(12) || AES-256-GCM(key, nonce, plaintext)           (sem AAD)
+plaintext = utf8(json_header) || 0x0A || jpeg_bytes
+json_header = {"v":1,"type":"archived_photo","ts":<ms>,"motivo":"login"|"periodica"|"bloqueado"|"alerta",
+               "user":"<login da conta>","login":<ms da entrada na conta>,"url":"<só em bloqueado/alerta>"}
+```
+
+JSON compacto (sem espaços, UTF-8): o primeiro `0x0A` separa. Abrir
+**rejeita** `v != 1`, `type != "archived_photo"` e `header.ts` diferente do
+`ts13` do nome. Funções: Python `seal_photo`/`open_photo` (`crypto.py`),
+Dart `SessionCrypto.sealPhoto`/`openPhoto` (`lib/src/secure/crypto.dart`).
+Vetor de paridade fixo: `agent/tests/fixtures/foto-v1.json` (Celita) =
+`test/fixtures/foto-v1.json` (app).
+
+Envio: `POST {storage}/v0/b/{bucket}/o?name=<fotos/{uid}/{dia}/{ts13}_{r}.bin>`
+com `Authorization: Firebase <idToken>` e `Content-Type:
+application/octet-stream`; depois do upload,
+`PUT archive/{deviceId}/fotos/{dia}/{ts13} = {"u": uid, "r": r}`. Nunca
+`getDownloadURL`. O app monta o caminho só com `u` e `r` do índice e baixa com
+`getData` (teto 1 MiB).
+
+### 7.4 Histórico arquivado ("nav-v1") — envelope de sempre (base64 de nonce||ct)
+
+`POST archive/{deviceId}/nav/{dia}` = `{"env": seal(key, OBJ), "ts": {".sv":"timestamp"}}`
+
+```
+OBJ = {"v":1,"type":"archived_nav","user":"<login>","login":<ms>,
+       "events":[{"ts":<ms>,"url":"...","title":"...","acao":"bloqueado"|"alerta" (opcional),
+                  "foto":<ts13> (opcional — só se a foto saiu)}]}
+```
+
+- Cortes: `url` ≤ 300, `title` ≤ 120, ≤ 50 eventos por lote, envelope
+  < 64 KiB (o agente parte o lote ao meio até caber). Sem `sid/seq`.
+- Um lote nunca cruza a meia-noite nem a sessão (dia do nó = dia dos eventos).
+- "Finalizados" = todos menos o último; o último entra só depois de 60 s ou no
+  fim da sessão (a extensão ainda pode preencher o título). Envio a cada 60 s
+  (ou 50 eventos).
+- O app descarta lote com `v != 1` ou `type != "archived_nav"` ("Parte do
+  histórico deste dia não pôde ser aberta."), tira duplicatas por
+  `login|user|ts|url` (POST reenviado após timeout), ordena por `ts` e agrupa
+  por entrada na conta (`login` + `user`).
+
+### 7.5 Qual foto mostrar para um site (app)
+
+1. Se o evento tem `foto` e o índice `fotos/{dayOf(foto)}/{foto}` existe, é
+   essa (o dia vem da própria foto: perto da meia-noite ela pode ser do dia
+   anterior).
+2. Senão, no dia do evento: `antes = orderByKey().startAt(ts13(max(login,
+   início do dia))).endAt(ts13(ts)).limitToLast(1)` e `depois =
+   orderByKey().startAt(ts13(ts)).limitToFirst(1)`; vale a mais próxima do
+   `ts`. Se for a "depois", abre e confere `header.login`/`header.user` com os
+   do lote; se não bater (ou não abrir), usa a "antes", se houver; se a
+   "depois" não abrir e não houver "antes", mostra o erro da foto (apagada,
+   ilegível ou falha de download). No passo 1, se a foto marcada não abrir,
+   mostra o erro — não procura outra.
+3. Sem nenhuma: "Nenhuma foto deste horário."
+
+### 7.6 Retenção (15 dias: hoje e os 14 anteriores)
+
+- **Agente** (quem poda de verdade): ao conectar e a cada 6 h,
+  `GET archive/{id}/nav?shallow=true` e `.../fotos?shallow=true` e um PATCH com
+  `null` nos dias `D <= hoje − 15`.
+- **App** (reserva): 1 vez por dia por celular (data guardada nas prefs), para
+  cada PC de `school/devices`, `update` multi-caminho com
+  `archive/{id}/nav/{d}` e `archive/{id}/fotos/{d}` = `null` para `d` de
+  hoje−45 a hoje−15. Só poda depois de receber o relógio do servidor
+  (`.info/serverTimeOffset` com conexão ativa; espera até 30 s, senão pula o
+  dia) — um celular com a data adiantada apagaria dias ainda válidos.
+  "Desconectar este PC" **não** apaga o arquivo.
+- **Storage:** regra de ciclo de vida do bucket (idade > 15 dias, prefixo
+  `fotos/`), versionada em `firebase/storage-lifecycle.json` e aplicada no
+  console (§8, passo 2).
+- O `/history` (ficha por aula/aluno gravada pelo celular) **não muda**: os 15
+  dias valem só para `/archive` e as fotos.
+
+## 8. Ordem de implantação (escola fechada + arquivo)
+
+1. Auditoria do Auth (só leitura): listar as contas com e-mail e conferir com o
+   usuário — é a semente de `/school/members`. Conta desconhecida ⇒ fotos e
+   histórico esperam uma troca de keypair da escola + re-pareamento.
+2. Criar o bucket em modo produção; publicar `storage.rules` e a regra de ciclo
+   de vida.
+3. App novo (com "Professores da escola") no celular do fundador;
+   `/school/members` semeado.
+4. Deploy do `database.rules.json`.
+5. Pacote do Celita (agente) e APK para os professores.
+
+## 9. Tipos reservados (futuro)
 `lock_screen`, `unlock_screen`, `focus_mode`.

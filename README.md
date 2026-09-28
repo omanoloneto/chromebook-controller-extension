@@ -54,7 +54,7 @@ src/
 │   │              # keypair.js (X25519), crypto.js (AES), protocol.js, rules.js
 │   └── vendor/    # qrcode.js (gerador de QR, MIT, vendorizado)
 firebase/          # espelho das Security Rules (canônico no app) + emuladores
-tests/             # rules, replay, firebase (unit) + rules-security (emulador)
+tests/             # rules, replay, firebase (unit) + rules-* (emulador: RTDB e Storage)
 ```
 
 ## Instalação
@@ -74,9 +74,9 @@ para desenvolvimento — unpacked não se auto-atualiza. Passo a passo em
 ## Testes
 
 ```bash
-node --test tests/*.test.mjs          # unit (replay, firebase, rules)
-cd firebase && firebase emulators:exec --only database --project demo-test \
-  "cd .. && node --test tests/rules-security.test.mjs"   # Security Rules
+node --test tests/*.test.mjs          # unit (replay, firebase, rules); os de rules pulam sem emulador
+cd firebase && firebase emulators:exec --only database,storage --project demo-test \
+  "cd .. && node --test --test-concurrency=1 tests/*.mjs"   # tudo, com as rules do RTDB e do Storage
 ```
 
 ## Roteiro
