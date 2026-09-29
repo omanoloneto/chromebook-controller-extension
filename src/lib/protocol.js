@@ -116,6 +116,7 @@ export function makeTabReport(tabs, events) {
         url: cortar(e.url, MAX_REPORT_URL),
         title: cortar(e.title, MAX_REPORT_TITLE),
         ts: typeof e.ts === 'number' ? e.ts : 0,
+        ...(typeof e.bloqueio === 'string' && e.bloqueio ? { bloqueio: cortar(e.bloqueio, 20) } : {}),
       })),
   };
 }

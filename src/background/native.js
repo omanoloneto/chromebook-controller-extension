@@ -10,7 +10,7 @@ export const NATIVE_HOST = 'br.escola.celita.controle_de_aula';
 const REPORT_DEBOUNCE_MS = 1000;
 
 export class Native {
-  /// `onExec(cmd, payload) -> Promise<{ok, error}>`; `onRules({rev, rules})`;
+  /// `onExec(cmd, payload) -> Promise<{ok, error}>`; `onRules({rev, rules, filtros?})`;
   /// `onClassView(snapshot|null)`; `onState({state, detail, teacher})`.
   constructor({ onExec, onRules, onClassView, onState, montarRelatorio }) {
     this.onExec = onExec;
@@ -102,7 +102,7 @@ export class Native {
         this.pareamento = msg.dados ?? null;
         return;
       case 'rules':
-        this.onRules?.({ rev: msg.rev, rules: msg.rules });
+        this.onRules?.({ rev: msg.rev, rules: msg.rules, filtros: msg.filtros });
         return;
       case 'classview':
         this.onClassView?.(msg.snapshot ?? null);

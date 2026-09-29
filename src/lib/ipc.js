@@ -46,6 +46,7 @@ export const STORAGE_AUTH = 'fbauth'; // {uid, refreshToken} (Auth anônima)
 export const STORAGE_REPLAY = 'replay'; // {cmd:{sid,seq}, rulesRev, wallpaperHash, classviewRev, unitRev}
 export const STORAGE_NAVLOG = 'navlog'; // [{url, title, ts, tabId}] (log rolante)
 export const STORAGE_RULES = 'rules'; // {rev, rules:[{pattern}]} (bloqueio)
+export const STORAGE_FILTROS = 'filtros'; // {shorts, reels, tiktok, ias, canais[]} já efetivos (content scripts leem)
 export const STORAGE_CLASSVIEW = 'classview'; // {rev, aula, pcs, recebidoEm} (presente = este PC é o telão)
 export const STORAGE_VERSION = 'extVersion'; // versão da extensão (SW grava; offscreen lê — getManifest não existe no offscreen)
 export const STORAGE_SCHOOL_ORIGINS = 'schoolOrigins'; // string[] origins a preservar na limpeza de sessão (ausente = DEFAULT_SCHOOL_ORIGINS)

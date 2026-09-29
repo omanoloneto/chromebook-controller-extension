@@ -1,0 +1,18 @@
+{
+  "descricao": "Normalização de canais do YouTube (paridade app ↔ extensão: lib/src/commands/filtros.dart ↔ src/lib/filtros.js; cópias idênticas em test/fixtures e tests/fixtures). null = entrada recusada.",
+  "casos": [
+    { "entrada": "@CanalDeJogos", "saida": "@canaldejogos" },
+    { "entrada": "canaldejogos", "saida": "@canaldejogos" },
+    { "entrada": "  @Canal.De_Jogos-2  ", "saida": "@canal.de_jogos-2" },
+    { "entrada": "https://www.youtube.com/@CanalDeJogos/videos", "saida": "@canaldejogos" },
+    { "entrada": "youtube.com/@canaldejogos", "saida": "@canaldejogos" },
+    { "entrada": "https://m.youtube.com/@CanalDeJogos?si=x", "saida": "@canaldejogos" },
+    { "entrada": "https://www.youtube.com/channel/UCabcdefghijklmnopqrstuv", "saida": "UCabcdefghijklmnopqrstuv" },
+    { "entrada": "UCabcdefghijklmnopqrstuv", "saida": "UCabcdefghijklmnopqrstuv" },
+    { "entrada": "https://www.youtube.com/watch?v=abc", "saida": null },
+    { "entrada": "https://instagram.com/@alguem", "saida": null },
+    { "entrada": "@ab", "saida": null },
+    { "entrada": "", "saida": null },
+    { "entrada": "@com espaço", "saida": null }
+  ]
+}

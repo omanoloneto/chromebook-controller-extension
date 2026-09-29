@@ -361,6 +361,17 @@ sessão gráfica de aluno aberta: `ack {ok:false, error:"sem_sessao"}`.
 { "v":1, "type":"capture_screen", "id":"a52", "payload":{} }
 ```
 
+**`liberar_ias`** (agente Celita ≥ 0.11.0; app ≥ 0.18.0) — libera
+(`liberar:true`) ou volta a bloquear as IAs **só na sessão aberta agora** no PC.
+O agente guarda o id da sessão (boot + logind) e, enquanto ela for a ativa,
+manda à extensão os filtros com `ias:false`; quando a pessoa sai da conta a
+liberação morre sozinha. Sem ninguém numa conta controlada:
+`ack {ok:false, error:"sem_sessao"}`. O relatório passa a trazer
+`iasLiberadas:true` enquanto valer.
+```json
+{ "v":1, "type":"liberar_ias", "id":"a53", "payload":{ "liberar":true } }
+```
+
 **Ack**
 ```json
 { "type":"ack", "id":"a43", "ok":true }
@@ -406,6 +417,30 @@ lado seguro). Caps (nos dois lados, `rules` e `alerts`):
   **nunca** repassa `alerts` à extensão; a extensão ignora a chave (chaves
   desconhecidas são ignoradas). A notificação ao professor continua avaliada
   no celular, para bloqueio e aviso.
+- **`filtros`** (app ≥ 0.18.0; agente Celita ≥ 0.11.0; extensão ≥ 0.6.0) —
+  filtros prontos da escola, enviados **sempre** (no telão, tudo `false`):
+  `{shorts, reels, tiktok, ias: bool, canais: ["@handle" | "UC…"]}` (≤ 200
+  canais). Vivem no mesmo arquivo das regras (`domain_rules.json`, sincronizado
+  pela escola como `school/stores/rules`). Chave **ausente** = o agente mantém os
+  anteriores; sem nada recebido ainda vale o padrão **tudo ligado** (pedido do
+  usuário). O agente repassa à extensão `{rev, rules, filtros}` já com a
+  liberação de IA da sessão aplicada. Na extensão (`src/lib/filtros.js`):
+  - **URL** (service worker, `motivoFiltro`): `tiktok.com`; `youtube.com/shorts…`;
+    `instagram.com/reels`, `/reel/…` e a aba Reels do perfil; a lista de IAs
+    (`DOMINIOS_IA`: Gemini, AI Studio, NotebookLM, ChatGPT, Claude, Copilot,
+    Perplexity, DeepSeek, Meta AI, Grok, Character.ai, Poe, Mistral, Pi, You,
+    Phind, Blackbox, Qwen, Kimi, Duck.ai, labs.google) mais o Modo IA do Google
+    (`/search?udm=50`), `bing.com/chat|copilotsearch` e `huggingface.co/chat`;
+    `youtube.com/@canal` e `/channel/UC…` dos canais bloqueados.
+  - **Página** (content scripts em `src/filtros/`, document_start, reagem a
+    `chrome.storage.onChanged`): YouTube esconde prateleiras, cartões, abas,
+    chip e atalhos de Shorts e os cartões dos canais bloqueados; no `/watch` o
+    dono do vídeo é mandado ao service worker (`{t:'cda-canal', handle, id}`),
+    que bloqueia a aba se o canal estiver na lista. Instagram esconde o botão e
+    os links de Reels e os posts que são reel. Google esconde o botão do Modo IA
+    e o bloco do resumo de IA, achado pelo título ("Visão geral criada por IA"
+    / "AI Overview") — sem forçar `udm=14` (decisão do usuário).
+  - A página de bloqueio recebe `?m=<motivo>` e mostra o texto do filtro.
 
 O cliente persiste as regras (`chrome.storage`) — o bloqueio continua valendo
 **offline**. A navegação bloqueada é registrada no navlog **antes** do
@@ -519,6 +554,14 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
   "events": [ { "url":"https://...", "title":"...", "ts":1767369540123 } ]
 }
 ```
+
+- **`bloqueio`** (extensão ≥ 0.6.0, opcional em cada evento, ≤ 20): motivo com
+  que a extensão bloqueou a tentativa — `regra`, `shorts`, `reels`, `tiktok`,
+  `ia`, `canal`. O agente trata qualquer evento marcado como tentativa
+  bloqueada (foto e selo no arquivo, §7); o app notifica "Tentativa de site
+  bloqueado" pelos motivos de filtro, que ele não reavalia.
+- **`iasLiberadas`** (agente Celita ≥ 0.11.0): `true` enquanto `liberar_ias`
+  valer na sessão aberta.
 
 - Só URLs `http`/`https`. Exatamente **uma** aba com `active: true`.
 - **Celita OS (agente ≥ 0.5.0):** dois campos a mais, exibidos pelo app

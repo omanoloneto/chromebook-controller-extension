@@ -9,11 +9,13 @@ import {
   STORAGE_PAIRING,
   STORAGE_NAVLOG,
   STORAGE_RULES,
+  STORAGE_FILTROS,
   STORAGE_CLASSVIEW,
   STORAGE_VERSION,
 } from '../lib/ipc.js';
 import { isSafeHttpUrl, makeTabReport, MAX_REPORT_EVENTS } from '../lib/protocol.js';
 import { hostCasa, acharRegra, MAX_RULES, MAX_RULE_PATTERN } from '../lib/rules.js';
+import { limparFiltros, motivoFiltro, canalBloqueado } from '../lib/filtros.js';
 // Efeito colateral: registra os listeners de limpeza de sessão (desloga todos
 // os sites na virada de sessão; a conta @escolacelita re-injeta sozinha).
 import './session-wipe.js';
@@ -289,19 +291,25 @@ async function execAtualizarClassView({ snapshot }) {
 }
 
 // Aplica o snapshot de regras de bloqueio e varre as abas já abertas.
-async function execAplicarRegras({ rev, rules }) {
+// `filtros` ausente (remetente antigo) mantém os que já valiam.
+async function execAplicarRegras({ rev, rules, filtros }) {
   const limpas = (Array.isArray(rules) ? rules : [])
     .filter((r) => typeof r?.pattern === 'string' && r.pattern.length > 0)
     .slice(0, MAX_RULES)
     .map((r) => ({ pattern: r.pattern.slice(0, MAX_RULE_PATTERN) }));
   regrasCache = limpas;
-  await chrome.storage.local.set({
-    [STORAGE_RULES]: { rev: typeof rev === 'number' ? rev : 0, rules: limpas },
-  });
+  const gravar = { [STORAGE_RULES]: { rev: typeof rev === 'number' ? rev : 0, rules: limpas } };
+  if (filtros !== undefined) {
+    filtrosCache = limparFiltros(filtros);
+    gravar[STORAGE_FILTROS] = filtrosCache;
+  }
+  await chrome.storage.local.set(gravar);
+  const efetivos = await carregarFiltros();
   try {
     const todas = await chrome.tabs.query({});
     for (const t of todas) {
-      if (isSafeHttpUrl(t.url) && acharRegra(limpas, t.url)) bloquearAba(t.id, t.url);
+      const motivo = motivoBloqueio(limpas, efetivos, t.url);
+      if (motivo) bloquearAba(t.id, t.url, motivo);
     }
   } catch {
     // varredura é best-effort
@@ -363,6 +371,7 @@ function registrarEventoNav(tab) {
         // Mesma página (re-ativação/título tardio): só atualiza título e hora.
         ultimo.title = entrada.title || ultimo.title;
         ultimo.ts = entrada.ts;
+        delete ultimo.bloqueio; // nova tentativa é marcada de novo, se ainda bloquear
       } else {
         log.push(entrada);
       }
@@ -393,6 +402,7 @@ function backfillTitulo(tabId, title) {
 // por vida do SW para o caminho quente do onUpdated.
 
 let regrasCache = null; // [{pattern}] | null (ainda não carregado)
+let filtrosCache = null; // filtros efetivos | null (ainda não carregado)
 
 async function carregarRegras() {
   if (regrasCache !== null) return regrasCache;
@@ -401,25 +411,74 @@ async function carregarRegras() {
   return regrasCache;
 }
 
-function bloquearAba(tabId, url) {
+// Nunca recebeu filtros = ninguém configurou ainda: vale o padrão (tudo ligado).
+async function carregarFiltros() {
+  if (filtrosCache !== null) return filtrosCache;
+  const salvo = (await chrome.storage.local.get(STORAGE_FILTROS))[STORAGE_FILTROS];
+  filtrosCache = limparFiltros(salvo);
+  if (!salvo) await chrome.storage.local.set({ [STORAGE_FILTROS]: filtrosCache }).catch(() => {});
+  return filtrosCache;
+}
+
+/// 'regra' (site bloqueado pelo professor), um motivo de filtro, ou null.
+function motivoBloqueio(regras, filtros, url) {
+  if (!isSafeHttpUrl(url)) return null;
+  if (regras.length && acharRegra(regras, url)) return 'regra';
+  return motivoFiltro(filtros, url);
+}
+
+// Marca a tentativa no navlog: o agente e o celular sabem que foi bloqueada
+// mesmo quando o motivo é um filtro, que eles não reavaliam.
+function marcarBloqueio(url, motivo) {
+  navlogChain = navlogChain
+    .then(async () => {
+      const log = (await chrome.storage.local.get(STORAGE_NAVLOG))[STORAGE_NAVLOG] ?? [];
+      for (let i = log.length - 1; i >= 0; i--) {
+        if (log[i].url === url) {
+          log[i].bloqueio = motivo;
+          await chrome.storage.local.set({ [STORAGE_NAVLOG]: log });
+          return;
+        }
+      }
+    })
+    .catch(() => {});
+}
+
+function bloquearAba(tabId, url, motivo = 'regra') {
   let dominio = '';
   try {
     dominio = new URL(url).hostname;
   } catch {
     // fica vazio
   }
+  marcarBloqueio(url, motivo);
   chrome.tabs
     .update(tabId, {
-      url: chrome.runtime.getURL('blocked/blocked.html') + '?d=' + encodeURIComponent(dominio),
+      url:
+        chrome.runtime.getURL('blocked/blocked.html') +
+        '?d=' + encodeURIComponent(dominio) +
+        '&m=' + encodeURIComponent(motivo),
     })
     .catch(() => {});
 }
 
 async function aplicarBloqueio(tabId, url) {
-  if (!isSafeHttpUrl(url)) return;
-  const regras = await carregarRegras();
-  if (regras.length && acharRegra(regras, url)) bloquearAba(tabId, url);
+  const [regras, filtros] = await Promise.all([carregarRegras(), carregarFiltros()]);
+  const motivo = motivoBloqueio(regras, filtros, url);
+  if (motivo) bloquearAba(tabId, url, motivo);
 }
+
+// O dono do vídeo só aparece na página: o content script do YouTube avisa e o
+// bloqueio é decidido aqui, com os filtros daqui.
+chrome.runtime.onMessage.addListener((msg, sender) => {
+  if (msg?.t !== 'cda-canal' || sender.id !== chrome.runtime.id || !sender.tab?.id) return false;
+  carregarFiltros()
+    .then((filtros) => {
+      if (canalBloqueado(filtros, msg)) bloquearAba(sender.tab.id, sender.tab.url, 'canal');
+    })
+    .catch(() => {});
+  return false;
+});
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.url || changeInfo.title) native.agendarRelatorio();
@@ -455,7 +514,7 @@ async function montarRelatorio() {
     active: ativa != null && t.id === ativa.id,
   }));
   const log = (await chrome.storage.local.get(STORAGE_NAVLOG))[STORAGE_NAVLOG] ?? [];
-  const events = log.map(({ url, title, ts }) => ({ url, title, ts }));
+  const events = log.map(({ url, title, ts, bloqueio }) => ({ url, title, ts, bloqueio }));
   return makeTabReport(tabs, events);
 }
 
