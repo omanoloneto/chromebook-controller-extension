@@ -372,6 +372,18 @@ liberação morre sozinha. Sem ninguém numa conta controlada:
 { "v":1, "type":"liberar_ias", "id":"a53", "payload":{ "liberar":true } }
 ```
 
+**`atualizar`** (agente Celita ≥ 0.12.0; app ≥ 0.19.0) — o PC roda na hora a
+mesma verificação do "Atualizar agora" da Central do Celita
+(`systemctl start --no-block celita-update-manual.service`). O ack sai antes do
+apt, que reinicia o agente no meio. Sem o atualizador:
+`ack {ok:false, error:"atualizador_ausente"}`. O app decide quem está
+desatualizado comparando `meta/os` com a maior versão do `celita-os-completo`
+no índice público do canal (`…/celita-apt/dists/estavel/main/binary-amd64/Packages`);
+PC com Celita sem `meta/os` é de antes da 1.24.0 e conta como desatualizado.
+```json
+{ "v":1, "type":"atualizar", "id":"a54", "payload":{} }
+```
+
 **Ack**
 ```json
 { "type":"ack", "id":"a43", "ok":true }
@@ -726,8 +738,11 @@ gera).
 
 - **`meta/ext` = `celita-<versão do pacote>`**: o build do `.deb` grava a
   versão do pacote no `VERSION` do agente (e falha se não trocar exatamente
-  uma linha). O app mostra só o número, entre parênteses, ao lado do nome do
-  PC (`celita-0.10.0` → `0.10.0`; `0.4.11` da extensão → `0.4.11`).
+  uma linha). **`meta/os`** (agente ≥ 0.12.0, ≤ 20 caracteres) = versão
+  instalada do `celita-os-completo` (`dpkg-query`), lida a cada registro — o
+  apt reinicia o agente ao atualizar, então ela acompanha. É a que o app mostra
+  entre parênteses ao lado do nome do PC (app ≥ 0.19.0), com
+  " · desatualizado" quando for mais velha que a publicada no canal.
 - **Página inicial:** o agente lê `/home/escola` (público) ao conectar, a
   cada sessão nova e a cada 60 s. Com resposta 200 e `cfg.url` válida
   (http/https, ≤ 2048) grava a política gerenciada

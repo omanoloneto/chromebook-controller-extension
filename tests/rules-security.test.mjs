@@ -89,6 +89,10 @@ test('meta: primeiro write fixa o uid; outro auth não rouba', { skip }, async (
       body: { uid: 'uid-prof', pub: 'X', label: 'roubo', v: 4 },
     }),
   );
+  // Versão do sistema (Celita OS): o device publica; texto longo é recusado.
+  await permitido(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { ext: 'celita-0.12.0', os: '1.24.0' } }));
+  await negado(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { os: 'x'.repeat(21) } }));
+  await negado(req('PATCH', '/devices/d1/meta', { auth: PROF, body: { os: '9.9.9' } }));
 });
 
 test('pairing: só o device grava; professor não lê', { skip }, async () => {
