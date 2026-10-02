@@ -644,15 +644,25 @@ const horaMin = (ts) => new Date(ts).toLocaleTimeString('pt-BR', { hour: '2-digi
 // ---- Registro do bloqueio (o pedido nasce daqui) ----
 
 function registrarBloqueio(tabId, url, motivo) {
+  const host = hostDeUrl(url);
   return mudarSessao(SESSAO_BLOQUEIOS, {}, (b) => {
-    b[tabId] = { url: String(url ?? '').slice(0, 2048), host: hostDeUrl(url), motivo, ts: Date.now() };
+    b[tabId] = { url: String(url ?? '').slice(0, 2048), host, motivo, ts: Date.now() };
     const ids = Object.keys(b);
     if (ids.length > MAX_BLOQUEIOS) {
       ids.sort((x, y) => (b[x]?.ts ?? 0) - (b[y]?.ts ?? 0));
       for (const id of ids.slice(0, ids.length - MAX_BLOQUEIOS)) delete b[id];
     }
     return b;
-  });
+  }).then(() =>
+    // Bloqueado de novo depois de "aprovado" (as regras mudaram outra vez, ou
+    // as novas não chegaram a tempo): a liberação não vale mais. Sem isto a
+    // página ficaria para sempre em "Liberado! Abrindo o site…", sem botão.
+    mudarSessao(SESSAO_PEDIDOS, {}, (p) => {
+      if (p[host]?.estado !== 'aprovado') return undefined;
+      delete p[host];
+      return p;
+    }),
+  );
 }
 
 function esquecerBloqueio(tabId) {
