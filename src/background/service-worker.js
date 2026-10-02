@@ -1129,13 +1129,20 @@ function abrirChat({ foco = false } = {}) {
     } catch {
       // sem janela normal: o sistema escolhe a posição
     }
-    const w = await chrome.windows.create({
-      url: chrome.runtime.getURL('chat/chat.html'),
-      type: 'popup',
-      width: 340,
-      height: 460,
-      ...pos,
-      focused: !!foco,
+    const criar = (extra) =>
+      chrome.windows.create({
+        url: chrome.runtime.getURL('chat/chat.html'),
+        type: 'popup',
+        width: 340,
+        height: 460,
+        ...extra,
+        focused: !!foco,
+      });
+    // O Chrome recusa limites com menos de 50% na tela (janela normal meio
+    // fora dela): sem posição, o sistema escolhe — a mensagem não se perde.
+    const w = await criar(pos).catch((e) => {
+      if (!('left' in pos)) throw e;
+      return criar({});
     });
     await areaSessao()?.set({ [SESSAO_CHAT_JANELA]: w.id });
     return w.id;
