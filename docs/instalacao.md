@@ -15,6 +15,13 @@ o link, e o **Chrome atualiza sozinho** (checa a cada ~5h; `chrome://extensions`
 1. Abra o link da extensão na Web Store:
    **https://chromewebstore.google.com/detail/lhgjobopefkabgcifkkgmcnlmokjpjin**
 2. "Usar no Chrome". Pronto — sem modo desenvolvedor, sem pasta.
+3. **Permitir miniatura da tela** (uma vez por Chromebook, na preparação): depois
+   de parear, abra o popup da extensão → **"Permitir miniatura da tela"** →
+   confirme o pedido do Chrome. Isso deixa o professor ver uma miniatura da aba
+   ativa na grade ao vivo, **só enquanto ele está olhando**. Sem esse passo
+   tudo funciona, mas a grade mostra "Miniatura não permitida neste Chromebook" para este PC.
+   A atualização para a 0.7.0 **não** pede reaprovação: a permissão é opcional
+   justamente para a extensão continuar ativa.
 
 ### Migrando do modo desenvolvedor (unpacked)
 
@@ -67,13 +74,21 @@ API v1 morre em 15/out/2026 (este fluxo já usa a v2).
    (TOFU — vínculo exclusivo) e aparece na lista do app. É **1x por PC**.
 3. O professor digita uma URL no app → abre no Chromebook (de qualquer rede).
 4. Uma vez vinculado, o professor passa a ver **as abas abertas e as URLs
-   visitadas** neste Chromebook (somente URLs/títulos — **sem captura de tela**;
-   transparência: avise a turma/escola de que o monitoramento existe).
+   visitadas** neste Chromebook (transparência: avise a turma/escola de que o
+   monitoramento existe). Com a permissão opcional concedida, ele também vê uma
+   **miniatura da aba ativa** na grade ao vivo, só enquanto a grade está aberta;
+   a imagem não é guardada.
 5. O professor também pode **fechar abas**, **bloquear sites** (aparece a página
    "Site bloqueado pelo professor" — o bloqueio persiste mesmo offline) e
    **trocar o papel de parede** (só em ChromeOS).
 6. No popup dá para definir o **nome deste PC** (ex.: "PC 07"), que aparece na
    lista do professor.
+7. **Aluno → professor:** no popup, **"Falar com o professor"** abre a janela de
+   chat e **"✋ Levantar a mão"** avisa o professor. Na página "Site bloqueado",
+   o aluno pode **pedir liberação** com um motivo curto.
+8. **"Olhos em mim"** trava a tela com um recado do professor; o **modo prova**
+   deixa abrir só os sites liberados. Os dois destravam sozinhos se o professor
+   sumir (prazo), e o fim de aula apaga a conversa do chat.
 
 O ícone fica verde quando conectado.
 

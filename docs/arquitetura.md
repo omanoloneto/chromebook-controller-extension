@@ -65,12 +65,50 @@ diferentes** — só precisam de internet.
 
 | Permissão | Para quê |
 |-----------|----------|
-| `tabs` | Abrir/fechar/focar abas, informar URLs/títulos (`tab_report`, sem captura de tela) e bloquear sites (redirect). |
+| `tabs` | Abrir/fechar/focar abas, informar URLs/títulos (`tab_report`), bloquear sites (redirect), mutar abas e fechar abas novas durante a trava. |
 | `wallpaper` | Trocar o papel de parede (só existe em ChromeOS). |
 | `offscreen` | Hospedar o cliente Firebase (SSE/auth/timers). |
-| `storage` | Par de chaves, vínculo, token de pareamento, auth, anti-replay, regras, nav-log. |
-| `alarms` | Reanimar o service worker (que garante o offscreen). |
+| `storage` | Par de chaves, vínculo, token de pareamento, auth, anti-replay, regras, nav-log, cópias locais de trava e prova, limites do `up`; `storage.session` para chat, pedidos e bloqueios da sessão. |
+| `alarms` | Reanimar o service worker (que garante o offscreen) e reafirmar a trava a cada 30 s. |
 | `host_permissions` | Só endpoints do Firebase (`*.firebaseio.com`, `*.firebasedatabase.app`, `identitytoolkit`/`securetoken.googleapis.com`) — sem o aviso "ler dados em todos os sites". |
+| `optional_host_permissions: ["<all_urls>"]` | **Opcional** — só a miniatura da grade ao vivo (`chrome.tabs.captureVisibleTab` da aba ativa, ≤ 480 px, enquanto o professor olha). Pedida uma vez pelo botão "Permitir miniatura da tela" do popup. |
+
+**Por que a miniatura é permissão opcional.** Acrescentar um host
+**obrigatório** numa atualização faz o Chrome **desativar** a extensão
+instalada pela Web Store até alguém reaprovar no Chromebook — e extensão
+desativada é controle desligado (fail-open de tudo: bloqueio, trava, prova).
+Por isso `host_permissions` não muda e `<all_urls>` fica em
+`optional_host_permissions`: a 0.7.0 atualiza sozinha e continua ativa; sem a
+permissão, o PC só manda o marcador `sem_permissao` e a grade do professor
+mostra "Miniatura não permitida neste Chromebook".
+
+## Recursos de turma (0.7.0)
+
+- **Canal aluno → professor (`up`)**: o service worker é o único ponto que
+  decide o que sobe (rate-limit L1–L4 em `chrome.storage.local` `limites`,
+  `src/lib/limites.js`); o offscreen sela e faz `POST devices/{id}/up` só
+  quando o pedido vem do SW. Escrita nova usa o caminho **quieto** do
+  `firebase.js` (`putQuiet`/`postQuiet`/`deleteQuiet`/`getQuiet`): um 401/403
+  (rules antigas) renova o token no máximo 1× a cada 10 min e **nunca**
+  reconecta os streams.
+- **Página de bloqueio**: pede liberação ao professor com um motivo curto. O
+  pedido é montado pelo SW a partir do registro do bloqueio da própria aba
+  (`chrome.storage.session` `bloqueios`), nunca pelos parâmetros da URL.
+- **Chat** (`src/chat/`): janela popup 340×460 no canto inferior direito; o
+  histórico vive no SW (`chrome.storage.session` `chat`, ≤ 100 itens) e some
+  no fim de aula. Limite honesto: no ChromeOS é uma janela comum, e outra
+  janela pode cobri-la.
+- **"Olhos em mim"** (`src/lock/`): janela popup em tela cheia, re-focada,
+  com as abas mutadas e as abas **novas** fechadas; cópia local
+  (`chrome.storage.local` `trava`) com prazo, reaplicada a cada início do SW e
+  a cada 30 s. Limite honesto: atalhos do ChromeOS, apps Android e janelas
+  fora do Chrome continuam acessíveis por instantes.
+- **Modo prova** (`src/lib/prova.js`): só a página inicial da escola e a lista
+  `allow` abrem; os filtros continuam valendo.
+- **Origem das mensagens internas**: comandos do professor, proxy de storage
+  e miniatura só são aceitos vindos do documento offscreen; chat, popup e
+  página de bloqueio só de páginas da extensão. Content scripts (YouTube,
+  Instagram, Google) só falam `t:'cda-canal'`.
 
 ## Pontos de atenção
 
