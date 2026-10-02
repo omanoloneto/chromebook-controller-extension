@@ -51,10 +51,19 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # ausente/null = este PC não é o telão
     unit: "<envelope>"              # set_unit vigente (número da unidade editado
                                     # pelo professor depois do pareamento)
+    lock: "<envelope>"              # set_lock vigente ("Olhos em mim"; o PC guarda
+                                    # cópia local e destrava sozinho no prazo `ate`)
+    exam: "<envelope>"              # set_exam vigente (modo prova; idem)
+    monitor: "<envelope>"           # set_monitor vigente (grade ao vivo; o professor
+                                    # renova a cada 10 s e apaga ao fechar a grade)
   cmd/{pushId}: "<envelope>"        # fila professor→PC (open_url, close_tabs);
                                     # o PC deleta após o ack
   ack/{pushId}: "<envelope>"        # PC→professor; pushId = o do cmd correspondente;
                                     # professor deleta ao ler; PC poda além de 20
+  up/{pushId}: "<envelope>"         # fila ALUNO→professor (chat, unblock_request,
+                                    # raise_hand); o PC poda além de 20 e > 2 h;
+                                    # o professor apaga pedido/mão ao agir, nunca
+                                    # chat; qualquer professor apaga > 12 h
   report: {env: "<envelope>", ts}   # último tab_report (sobrescreve); ts = serverTimestamp
   snapshot: {env: "<envelope>", ts} # última foto da webcam (camera_snapshot; sobrescreve)
   presence/ {lastSeen}              # heartbeat do PC a cada 25s (serverTimestamp)
@@ -107,7 +116,7 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # própria entrada. O fundador não precisa de
                                     # entrada (entra pelo uid).
   devices/{deviceId}: true          # roster único da escola
-  stores/{k}: {rev, env}            # k = turmas|rules|units|names; env =
+  stores/{k}: {rev, env}            # k = turmas|rules|units|names|prova; env =
                                     # arquivo local inteiro {json} cifrado com
                                     # chave HKDF da keypair da escola
                                     # (info 'school-store-v1'); LWW por rev
@@ -135,6 +144,15 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # MEMBRO da escola (§4). No Celita OS o
                                     # agente também lê: `cfg.url` vira a política
                                     # do Chromium da página inicial (§6).
+
+/home/menu/ {rev, ids[≤24]}         # apps fixados no menu dos alunos (público,
+                                    # escrita MEMBRO); o agente do Celita grava
+                                    # /etc/celita/menu-fixados quando a lista muda
+
+/thumbs/{deviceId}/ {env, ts}       # última miniatura da tela (thumb_snapshot), só
+                                    # enquanto há state/monitor vigente; o device
+                                    # grava, professor/MEMBRO lê e só apaga. Fora de
+                                    # /devices/{id} de propósito (streams do nó inteiro)
 
 /archive/{deviceId}/                # arquivo de 15 dias da unidade (SÓ Celita OS,
   nav/{dia}/{pushId}: {env, ts}     # SÓ PC vinculado à escola — §7). Gravado pelo
@@ -280,10 +298,22 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 | `state/unit` | `payload.rev` monotônico (`>`), persistido; ilegível/null **ignora** (número vigente continua — re-pareamento reescreve) | — (snapshot idempotente) |
 | `report` (PC→professor) | `(sid,seq)` em memória | ±120 s no recebimento ao vivo; a 1ª leitura ao abrir o app pode ser antiga → aceita, com `lastReportAt` vindo do `ts` (servidor) do nó |
 | `ack` | `(sid,seq)` em memória | ±120 s |
+| `state/lock`, `state/exam` | `payload.rev` monotônico (`>=`, igual reaplica), persistido; nulo/ilegível **não muda**; o PC guarda cópia local e destrava no prazo (`ate − env.ts`, teto 2 h / 4 h) | — |
+| `state/monitor` | `payload.rev` monotônico (`>`), persistido; nó apagado = para na hora | `env.ts` ±120 s; prazo `ate − env.ts`, teto 45 s |
+| `up/*` (PC→professor) | `(sid,seq)` em memória no professor; dedup por `(deviceId, mid)` | ≤ 12 h no passado, ≤ 120 s no futuro |
 
 O guard de `cmd` é **persistido** no PC porque toda reconexão do stream SSE
 re-entrega o nó inteiro (`put` completo) — sem persistência, um comando cujo
 delete falhou seria re-executado.
+
+**Ids** (app ≥ 0.20.0, GTK do Celita ≥ 0.13.0): `id` de comando e `mid` são
+12 bytes aleatórios em base64url (16 caracteres). Cliente novo apaga só ack de
+id que ele emitiu; o PC poda o resto (≤ 20) e repete os 20 últimos acks no
+`tab_report` (`aplicado.acks`).
+
+**Escritas do PC fora do canal de comandos** (`up`, `/thumbs`): vão pelo
+caminho lateral (401/403 renova o token no máximo 1×/10 min e **não**
+reconecta streams). Rules atrasadas nunca derrubam o stream de `cmd`.
 
 ### Comandos one-shot (fila `cmd/`)
 
@@ -319,6 +349,10 @@ uma aba vazia antes:
   pelo "Encerrar aula" do app; no ChromeOS o aluno cai na área de trabalho e a
   extensão continua rodando (offscreen não é janela). Em Chrome desktop (dev),
   fechar a última janela pode encerrar o navegador.
+- `fimDeAula: true` (app ≥ 0.20.0; ext ≥ 0.7.0; Celita ≥ 0.13.0) — mandado
+  pelo "Encerrar aula": além de fechar, o cliente limpa o histórico do chat,
+  fecha a janela de chat, apaga pedidos pendentes e contadores de limite.
+  Cliente antigo ignora a chave.
 
 Fechar 0 abas/janelas ainda é `ack {ok:true}` (idempotente). Cliente < 0.4.1
 responde `ack {ok:false, error:"tipo_desconhecido"}` — inofensivo.
@@ -382,6 +416,26 @@ no índice público do canal (`…/celita-apt/dists/estavel/main/binary-amd64/Pa
 PC com Celita sem `meta/os` é de antes da 1.24.0 e conta como desatualizado.
 ```json
 { "v":1, "type":"atualizar", "id":"a54", "payload":{} }
+```
+
+**`chat_message`** (app ≥ 0.20.0, ext ≥ 0.7.0, Celita ≥ 0.13.0) — mensagem do
+professor para a janela de chat flutuante do aluno. `texto` 1..500, `de` ≤ 60,
+`mid` = id aleatório. O PC anexa ao histórico da sessão e abre a janela (se a
+tela estiver travada, guarda e abre ao destravar). Celita sem ninguém logado:
+`ack {ok:false, error:"sem_sessao"}` — não fica para a próxima sessão. Cliente
+antigo: `tipo_desconhecido`; o app então manda `show_message` com `popup:true`.
+```json
+{ "v":1, "type":"chat_message", "id":"pJ3x0Qm2aZr9Lw1K", "payload":{ "texto":"Abram a página 12.", "de":"Prof. Manoel", "mid":"Zr9Lw1KpJ3x0Qm2a" } }
+```
+
+**`unblock_result`** (mesmos mínimos) — resposta a um `unblock_request`.
+Aprovado: o cliente espera ter aplicado `state/rules` com `rev ≥ rulesRev` (ou
+`state/exam` com `rev ≥ examRev`), até 10 s, e navega toda aba bloqueada
+daquele `site` para a URL que ela tentava abrir. Recusado: a página de
+bloqueio mostra o motivo e o chat ganha o aviso.
+```json
+{ "v":1, "type":"unblock_result", "id":"…", "payload":{ "mid":"u…", "site":"pt.khanacademy.org", "approved":true, "rulesRev":1767369600000 } }
+{ "v":1, "type":"unblock_result", "id":"…", "payload":{ "mid":"u…", "site":"youtube.com", "approved":false, "motivo":"Depois da prova." } }
 ```
 
 **Ack**
@@ -550,6 +604,48 @@ chave de sessão nova. Cliente < 0.4.6 ignora a rota — inofensivo.
 { "v":1, "type":"set_unit", "id":"a50", "payload":{ "rev":1767369700000, "numero":2 } }
 ```
 
+**`set_lock`** — "Olhos em mim" (app ≥ 0.20.0, ext ≥ 0.7.0, Celita ≥ 0.13.0).
+`{rev, on, texto ≤200, mute, ate}` em `state/lock`. O app renova `ate = agora
++ 20 min` a cada 5 min enquanto `on`; o PC destrava sozinho em `agora +
+clamp(ate − env.ts, 0, 2 h)` e guarda cópia local (volta travado depois de
+reboot sem rede). Destravar = `on:false` (nunca apagar o nó). Celita: overlay
+GTK em tela cheia em cada monitor, serviço transitório do systemd como o
+aluno (respawn em 1 s, fora do cgroup do agente), grab de teclado/ponteiro,
+`srvrkeys:none` enquanto travado, mute com `pactl` restaurado depois; conta de
+aluno não entra no tty. ChromeOS: janela em tela cheia que se re-foca, abas
+novas fechadas, abas mutadas; **não** trava atalhos do sistema nem apps fora
+do Chrome. Cliente antigo ignora o nó; o app conta o PC como "versão antiga".
+```json
+{ "v":1, "type":"set_lock", "id":"…", "payload":{ "rev":1767369600000, "on":true, "texto":"Olhos no professor", "mute":true, "ate":1767370800000 } }
+```
+
+**`set_exam`** — modo prova (mesmos mínimos). `{rev, on, allow:[{pattern}]
+≤1000, inicio?, ate}` em `state/exam`, **separado de `state/rules`** (quem
+redistribui regras não desliga a prova). `allow` = lista da escola + liberações
+deste PC; `inicio` = página inicial da escola. Com `on`, a URL de topo: (1)
+página da extensão, nova aba, `about:blank` → libera; (2) esquema não http(s)
+→ bloqueia; (3) host de `inicio` + prefixo do caminho → libera; (4) casa
+`allow` (`regraCasa`) → só os filtros valem; (5) senão bloqueia com
+`?m=prova`. `ate = agora + 2 h`, renovado a cada 5 min; teto 4 h. Iframes e
+apps Android não são cobertos. Celita: o agente repassa `prova` à extensão no
+`rules` da ponte e só confirma com a ponte ≥ 0.7.0 (senão fecha o navegador
+uma vez para reabrir com a extensão nova).
+```json
+{ "v":1, "type":"set_exam", "id":"…", "payload":{ "rev":1767369600000, "on":true, "allow":[{"pattern":"khanacademy.org"}], "inicio":"https://escola.edu.br/portal", "ate":1767376800000 } }
+```
+
+**`set_monitor`** — grade ao vivo (mesmos mínimos). `{rev, ate}` em
+`state/monitor`, renovado a cada 10 s com `ate = agora + 30 s` enquanto a
+grade está aberta; apagado ao fechar. O PC aceita só `env.ts` a ±120 s do seu
+relógio, captura a cada 10 s até `agora + clamp(ate − env.ts, 0, 45 s)` e
+grava `/thumbs/{id}`; ao vencer, apaga a miniatura. Celita: a tela inteira
+(`scrot -t 480x0`). ChromeOS: a aba ativa da janela em foco
+(`captureVisibleTab`), só com a permissão opcional `<all_urls>` concedida no
+popup; sem ela, marcador `sem_permissao`.
+```json
+{ "v":1, "type":"set_monitor", "id":"…", "payload":{ "rev":1767369600000, "ate":1767369630000 } }
+```
+
 ### `tab_report` (PC → professor)
 
 Monitoramento **somente de URLs/títulos** (as imagens vão por outros caminhos:
@@ -574,6 +670,12 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
   bloqueado" pelos motivos de filtro, que ele não reavalia.
 - **`iasLiberadas`** (agente Celita ≥ 0.11.0): `true` enquanto `liberar_ias`
   valer na sessão aberta.
+- **`aplicado`** (ext ≥ 0.7.0, Celita ≥ 0.13.0): confirmação positiva —
+  `{trava:{rev, on, erro?}, prova:{rev, on, erro?}, acks:[{id, ok, error?}] ≤20}`.
+  `erro` ∈ `sem_sessao` (Celita sem ninguém logado: armado),
+  `navegador_antigo` (Celita com ponte < 0.7.0). O PC manda relatório logo
+  depois de aplicar estado ou responder comando. O professor só afirma
+  "travado ✓", "em prova ✓" ou "recebeu ✓" por ack ou por `aplicado`.
 
 - Só URLs `http`/`https`. Exatamente **uma** aba com `active: true`.
 - **Celita OS (agente ≥ 0.5.0):** dois campos a mais, exibidos pelo app
@@ -592,6 +694,36 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
   rolante completo), `url` ≤ 300 chars, `title` ≤ 120 chars.
 - O app deduplica `events` por `(ts, url)` — robusto a relatórios perdidos.
 - Ao desvincular, o PC **deleta** `report`/`ack`/`presence` (limpeza).
+
+### `up` (PC → professor)
+
+Fila do aluno em `up/{pushId}` (POST; id do servidor). Texto em claro:
+`{sid, seq, ts, v:1, type, mid, payload}`, selado com a session key.
+
+| type | payload |
+|---|---|
+| `chat` | `{texto 1..500}` |
+| `unblock_request` | `{site, url ≤500, motivo ≤200, bloqueio:"regra"\|"prova"}` |
+| `raise_hand` | `{}` |
+
+- `site` = host minúsculo `^[a-z0-9.-]{1,100}$`, ≥ 2 rótulos, nunca sufixo
+  público (`com`, `com.br`, `gov.br`…); quem recebe descarta o inválido.
+- Rate-limit no PC (persistido): chat 1/2 s e 30/h por login; pedido 1 por
+  site/60 s e ≤ 5 pendentes; mão 1/10 s. O professor mostra ≤ 20 pendentes por
+  PC e silencia 10 min o PC que passar de 20 itens em 10 min.
+- Destinatário: sem escola, o professor vinculado; na escola, quem tem a
+  reserva viva do PC em `/school/aulas` (com notificação); PC livre aparece a
+  todo MEMBRO, sem notificação; PC reservado por outro é ignorado (nem lido,
+  nem apagado).
+- Apaga: pedido/mão — quem agir; chat — ninguém (o PC poda > 2 h e > 20);
+  qualquer professor apaga > 12 h.
+
+### `thumb_snapshot` (PC → professor)
+
+`/thumbs/{deviceId} = {env, ts}`; `env` = `{v:1, type:"thumb_snapshot",
+jpegB64|null, w, h, motivo?}`, JPEG ≤ 480 px de largura, q 60, alvo < 40 KB.
+`motivo` ∈ `sem_sessao`, `sem_permissao`, `aba_protegida`, `falhou` (com
+`jpegB64:null`). Nunca arquivada.
 
 ### `camera_snapshot` / `screen_snapshot` (PC → professor)
 
@@ -620,6 +752,14 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   apenas **deletar** (consumir).
 - `report`, `ack`, `presence` — graváveis só pelo device (`meta/uid`); em `ack`
   o professor pode apenas deletar.
+- `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
+  professor vinculado ou MEMBRO pode apenas apagar filhos.
+- `state` aceita também `lock`, `exam`, `monitor`.
+- `/thumbs/{id}` — `.read` = device, professor vinculado ou MEMBRO; o device
+  grava `{env < 262144, ts}` e nada mais; professor/MEMBRO só apaga.
+- `/home/menu` — leitura pública; escrita MEMBRO; `rev` obrigatório; `ids/$i`
+  com `$i` 0..23 e valor `^[A-Za-z0-9._-]+[.]desktop$` (≤ 64).
+- `school/stores/{k}` aceita também `prova`.
 - Leitura de `/devices/{id}` — o device, o professor vinculado e MEMBRO da escola.
 - `/wallpapers/{tUid}` — escrita só do dono; leitura do dono ou de device cujo
   `bind/teacherUid == tUid` (resolvido via `/device_uids/{auth.uid}`).
@@ -693,6 +833,15 @@ rules e sobe os emuladores `database` e `storage`):
   no banco (E2E — só a chave do professor abre; deletado ao desvincular);
   snapshot `classview` repousa cifrado no nó do telão e é exibido publicamente
   por design (§3, `set_class_view`).
+  Chat, pedidos de liberação e miniaturas são cifrados com a chave do par
+  PC↔escola, então **todo MEMBRO da escola** consegue decifrá-los; a separação
+  "só o professor da aula vê" é de interface, não criptográfica. Miniaturas
+  repousam em `/thumbs` só enquanto alguém olha a grade (PC e professor
+  apagam), nunca são arquivadas, e não há aviso ao aluno (escolha do dono; a
+  escola informa os responsáveis — LGPD). "Olhos em mim" não é lockdown: no
+  Celita, um programa do aluno iniciado antes da trava pode brigar com o
+  overlay (X11 não isola clientes); no ChromeOS, atalhos e apps fora do Chrome
+  continuam acessíveis.
 - **Histórico de aulas (retenção):** o app grava em `/history` os acessos de
   alunos VINCULADOS durante aulas ativas — cifrado (só o professor decifra),
   apagável na UI (por aula, por aluno ou tudo). Recomenda-se transparência
@@ -754,6 +903,18 @@ gera).
   `school/meta/schoolUid`): 401/403 renova o token no máximo 1 vez a cada
   10 min, sem reconectar os streams; negação persistente = backoff de 10 min
   daquela funcionalidade.
+- **Chat do aluno, trava e miniaturas** (agente ≥ 0.13.0): a janela
+  "Falar com o professor" e o overlay da trava rodam como serviços
+  transitórios do systemd com o uid do aluno (fora do cgroup do agente);
+  a janela fala com o agente por `/run/controle-de-aula/aluno.sock` (grupo
+  `nopasswdlogin`, só a sessão ativa). O histórico do chat fica no agente,
+  por sessão. Miniaturas: `scrot -t 480x0` num diretório root `0711` com
+  arquivos pré-criados para o aluno; leitura sem seguir links, só arquivo
+  regular do uid certo, ≤ 256 KiB.
+- **Apps fixados da escola:** o agente lê `/home/menu` junto com
+  `/home/escola` e grava `/etc/celita/menu-fixados` (linha-marca
+  `# controle-de-aula:`) só quando a lista muda; remove só arquivo com a
+  marca. O "Fixar para todos" do menu grava o mesmo arquivo: vale o último.
 
 ## 7. Arquivo da unidade (fotos e histórico — Celita OS)
 
@@ -894,5 +1055,18 @@ OBJ = {"v":1,"type":"archived_nav","user":"<login>","login":<ms>,
 4. Deploy do `database.rules.json`.
 5. Pacote do Celita (agente) e APK para os professores.
 
+### Recursos de turma (app 0.20.0, extensão 0.7.0, Celita 0.13.0)
+
+1. Publicar o `database.rules.json` novo no console (superconjunto: clientes
+   antigos não percebem).
+2. Pacote do Celita 0.13.0 (embute a extensão 0.7.0) e extensão 0.7.0 na Web
+   Store. Nos Chromebooks, conceder "Permitir miniatura da tela" no popup
+   (uma vez por aparelho) para a grade mostrar a tela.
+3. APK 0.20.0 para os professores.
+Fora de ordem nada quebra: escrita nova negada mostra ao professor "O
+servidor da escola ainda não foi atualizado para este recurso".
+
 ## 9. Tipos reservados (futuro)
-`lock_screen`, `unlock_screen`, `focus_mode`.
+`lock_screen`, `unlock_screen` e `focus_mode` foram aposentados: a trava é
+estado (`set_lock` em `state/lock`) e o modo prova também (`set_exam` em
+`state/exam`). Nenhum tipo reservado no momento.
