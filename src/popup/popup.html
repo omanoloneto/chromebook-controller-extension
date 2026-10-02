@@ -10,7 +10,7 @@
     <header>
       <h1>Controle de Aula</h1>
       <p class="status" id="status">Conectando…</p>
-      <button id="btn-reconectar" class="icone" title="Reconectar ao Firebase">⟳</button>
+      <button id="btn-reconectar" class="icone" title="Reconectar" aria-label="Reconectar">⟳</button>
     </header>
 
     <main>
@@ -20,6 +20,18 @@
           <span class="unidade-numero" id="numero">—</span>
         </div>
         <p class="ok" id="prof">✅ Conectado ao professor.</p>
+        <p class="dica" id="detalhe3"></p>
+
+        <!-- Recursos de turma (só ChromeOS e fora do telão). -->
+        <div class="turma" id="turma" hidden>
+          <button id="btn-chat">Falar com o professor</button>
+          <button id="btn-mao" class="secundario">✋ Levantar a mão</button>
+          <p class="dica aviso" id="aviso-turma" role="status" aria-live="polite" hidden></p>
+          <div class="miniatura" id="miniatura" hidden>
+            <button id="btn-miniatura" class="secundario">Permitir miniatura da tela</button>
+            <p class="dica">O professor poderá ver uma miniatura desta tela durante a aula.</p>
+          </div>
+        </div>
       </section>
 
       <!-- Só aparece no PC do professor (telão): snapshot da turma presente. -->
@@ -36,7 +48,7 @@
       </section>
 
       <section id="conectando" hidden>
-        <p class="passo">Conectando ao Firebase…</p>
+        <p class="passo">Conectando…</p>
         <p class="dica" id="detalhe2"></p>
       </section>
 
