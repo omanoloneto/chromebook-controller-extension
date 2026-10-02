@@ -15,6 +15,9 @@ export const STREAM_WATCHDOG_MS = 90000;
 /// Renova o idToken 5 min antes de expirar (vida padrão: 1h).
 const REFRESH_MARGIN_MS = 5 * 60 * 1000;
 
+/// Caminho lateral: no máximo uma renovação de token a cada 10 min.
+export const QUIET_REFRESH_MS = 10 * 60 * 1000;
+
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 60000;
 
@@ -95,6 +98,8 @@ export class FirebaseSession {
     this._refreshToken = null;
     this._refreshTimer = null;
     this._streams = new Set(); // streams ativos: reconectam após refresh
+    this._quietRefresh = null; // renovação em curso do caminho lateral
+    this._quietRefreshAt = -Infinity; // última renovação do caminho lateral
   }
 
   // ---- Auth -----------------------------------------------------------------
@@ -138,7 +143,10 @@ export class FirebaseSession {
     return this.uid;
   }
 
-  async _refresh(refreshToken) {
+  /// `reconectar:false` = caminho lateral (§ "Escritas do PC fora do canal de
+  /// comandos"): troca o token sem derrubar os streams. O stream segue com o
+  /// token antigo até o servidor mandar auth_revoked, como sempre.
+  async _refresh(refreshToken, { reconectar = true } = {}) {
     const res = await this._fetch(`${this.tokenOrigin}/v1/token?key=${this.apiKey}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -168,7 +176,7 @@ export class FirebaseSession {
     await this.saveAuth?.({ uid: this.uid, refreshToken: this._refreshToken });
     this._scheduleRefresh(Number(data.expires_in) * 1000);
     // O idToken vai na URL do EventSource — streams precisam reconectar.
-    for (const s of this._streams) s._reconnect('token_renovado');
+    if (reconectar) for (const s of this._streams) s._reconnect('token_renovado');
     return this.uid;
   }
 
@@ -255,6 +263,67 @@ export class FirebaseSession {
 
   delete(path) {
     return this._request('DELETE', path);
+  }
+
+  // ---- Caminho lateral (escritas novas do PC: up, /thumbs) ---------------------
+  // O RTDB responde 401 quando a REGRA nega — e o _request acima trata 401 como
+  // token vencido, renovando e RECONECTANDO todos os streams. Com as rules do
+  // console atrasadas, cada escrita nova derrubaria o stream de comandos. Aqui:
+  // nunca lança, nunca reconecta stream, e renova o token no máximo 1×/10 min
+  // (trava compartilhada pelos quatro métodos). Devolve {status, body};
+  // status 0 = sem rede/timeout.
+
+  async _quiet(method, path, body, extra = '') {
+    const tentar = async () => {
+      try {
+        const res = await this._fetch(this._url(path, extra), {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: body === undefined ? undefined : JSON.stringify(body),
+        });
+        const corpo = await res.json().catch(() => null);
+        return { status: res.status, body: corpo };
+      } catch {
+        return { status: 0, body: null };
+      }
+    };
+    let r = await tentar();
+    if ((r.status === 401 || r.status === 403) && (await this._renovarQuieto())) {
+      r = await tentar();
+    }
+    return r;
+  }
+
+  /// Renova o token sem reconectar streams, no máximo 1×/10 min. true = renovou.
+  async _renovarQuieto() {
+    if (this._quietRefresh) return this._quietRefresh;
+    const agora = Date.now();
+    if (agora - this._quietRefreshAt < QUIET_REFRESH_MS) return false;
+    this._quietRefreshAt = agora;
+    this._quietRefresh = this._refresh(undefined, { reconectar: false })
+      .then(() => true)
+      .catch(() => false)
+      .finally(() => {
+        this._quietRefresh = null;
+      });
+    return this._quietRefresh;
+  }
+
+  getQuiet(path, { shallow = false } = {}) {
+    return this._quiet('GET', path, undefined, shallow ? '&shallow=true' : '');
+  }
+
+  putQuiet(path, value) {
+    return this._quiet('PUT', path, value);
+  }
+
+  /// POST → {status, body:{name: pushId}}.
+  postQuiet(path, value) {
+    return this._quiet('POST', path, value);
+  }
+
+  deleteQuiet(path) {
+    return this._quiet('DELETE', path);
   }
 
   // ---- Stream (SSE) -----------------------------------------------------------

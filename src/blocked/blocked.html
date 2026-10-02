@@ -7,12 +7,51 @@
     <link rel="stylesheet" href="blocked.css" />
   </head>
   <body>
-    <main>
-      <div class="icone">🚫</div>
+    <main class="cartao">
+      <div class="selo" id="selo" aria-hidden="true">
+        <svg class="icone-bloqueio" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M5.7 5.7l12.6 12.6" />
+        </svg>
+        <svg class="icone-prova" viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 4h6a1 1 0 0 1 1 1v1H8V5a1 1 0 0 1 1-1z" />
+          <path d="M8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2" />
+          <path d="M9 13l2 2 4-4" />
+        </svg>
+      </div>
       <h1 id="titulo">Site bloqueado pelo professor</h1>
-      <p id="texto">Este site não está liberado durante a aula.</p>
-      <p class="dominio" id="dominio"></p>
+      <p class="texto" id="texto">Este site não está liberado durante a aula.</p>
+      <p class="dominio" id="dominio" hidden></p>
+      <p class="aviso-escola" id="aviso-escola" hidden>Este bloqueio vale para a escola toda. Fale com o professor.</p>
+
+      <section class="pedido" id="pedido" hidden>
+        <div class="status" id="status" role="status" aria-live="polite" hidden>
+          <span class="spinner" id="spinner" aria-hidden="true" hidden></span>
+          <span class="status-icone" id="status-icone" aria-hidden="true"></span>
+          <span class="status-texto">
+            <span id="status-texto"></span>
+            <span class="motivo-recusa" id="motivo-recusa" hidden></span>
+          </span>
+        </div>
+
+        <form id="form" class="form" hidden>
+          <label class="sr" for="motivo">Motivo do pedido</label>
+          <textarea
+            id="motivo"
+            maxlength="200"
+            rows="3"
+            placeholder="Por que você precisa abrir este site? (opcional)"
+          ></textarea>
+          <div class="contador" id="contador" aria-live="polite">0/200</div>
+          <div class="acoes">
+            <button type="button" class="secundario" id="btn-cancelar">Cancelar</button>
+            <button type="submit" class="primario" id="btn-enviar">Enviar pedido</button>
+          </div>
+        </form>
+
+        <button type="button" class="primario largo" id="btn-acao" hidden>Pedir liberação ao professor</button>
+      </section>
     </main>
-    <script src="blocked.js"></script>
+    <script type="module" src="blocked.js"></script>
   </body>
 </html>

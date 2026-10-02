@@ -172,3 +172,18 @@ footer {
   padding: 8px 16px 16px;
   color: #666;
 }
+
+/* Recursos de turma (ChromeOS conectado). */
+.turma {
+  margin-top: 12px;
+  padding-top: 4px;
+  border-top: 1px solid #eceff1;
+}
+
+.turma .aviso {
+  text-align: center;
+}
+
+.miniatura .dica {
+  margin-top: 6px;
+}

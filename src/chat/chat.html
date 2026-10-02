@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Professor</title>
+    <link rel="stylesheet" href="chat.css" />
+  </head>
+  <body>
+    <header class="cabecalho">
+      <div class="avatar" id="avatar" aria-hidden="true">?</div>
+      <h1 class="nome" id="nome">Professor</h1>
+      <button type="button" class="janela-btn" id="btn-minimizar" title="Minimizar" aria-label="Minimizar">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M3.5 8h9" /></svg>
+      </button>
+      <button type="button" class="janela-btn" id="btn-fechar" title="Fechar" aria-label="Fechar">
+        <svg viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8" /></svg>
+      </button>
+    </header>
+
+    <main class="corpo" id="corpo">
+      <ol class="lista" id="lista" role="log" aria-live="polite" aria-label="Conversa com o professor"></ol>
+      <p class="vazio" id="vazio" hidden>Escreva aqui para falar com o professor.</p>
+    </main>
+
+    <footer class="rodape">
+      <p class="aviso" id="aviso" role="status" aria-live="polite" hidden></p>
+      <form class="escrever" id="form" autocomplete="off">
+        <label class="sr" for="texto">Mensagem para o professor</label>
+        <input id="texto" type="text" maxlength="500" placeholder="Escreva para o professor…" enterkeyhint="send" />
+        <button type="submit" class="enviar" id="btn-enviar" title="Enviar" aria-label="Enviar" disabled>
+          <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+            <path d="M3.4 20.4l17.45-7.48a1 1 0 0 0 0-1.84L3.4 3.6a.99.99 0 0 0-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z" />
+          </svg>
+        </button>
+      </form>
+      <button type="button" class="mao" id="btn-mao">✋ Levantar a mão</button>
+    </footer>
+
+    <script type="module" src="chat.js"></script>
+  </body>
+</html>

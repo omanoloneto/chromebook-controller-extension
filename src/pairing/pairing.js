@@ -53,7 +53,11 @@ async function atualizar() {
 
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg?.cmd === IPC.STATE_CHANGED) {
-    if (msg.detail) el.detalhe.textContent = msg.detail;
+    // Só textos fixos na tela; o detalhe técnico fica no console do offscreen.
+    el.detalhe.textContent =
+      msg.motivo === 'vinculo_divergente'
+        ? 'Este computador está ligado a outro professor. Desconecte e conecte de novo.'
+        : '';
     atualizar();
   }
 });

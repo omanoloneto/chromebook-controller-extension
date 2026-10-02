@@ -3,7 +3,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { parseStreamEvent, FirebaseSession } from '../src/lib/firebase.js';
+import { parseStreamEvent, FirebaseSession, QUIET_REFRESH_MS } from '../src/lib/firebase.js';
 
 // ---- parseStreamEvent (frames enlatados do RTDB) ------------------------------
 
@@ -247,5 +247,100 @@ test('push retorna o pushId do RTDB', async () => {
   });
   fb.idToken = 't';
   assert.equal(await fb.push('/devices/d1/ack', 'env'), '-Nabc123');
+  fb.stop();
+});
+
+// ---- Caminho lateral (escritas novas do PC: up, /thumbs) ----------------------
+// Rules atrasadas respondem 401 a toda escrita nova. O caminho normal trataria
+// isso como token vencido e reconectaria TODOS os streams (o de comandos
+// inclusive) — a cada escrita. O lateral nunca reconecta e renova no máximo
+// 1× a cada 10 min.
+
+function sessaoLateral({ statusDados = 401, refreshOk = true } = {}) {
+  const chamadas = { dados: [], refresh: 0 };
+  const fetchImpl = async (url, opts) => {
+    if (url.includes('/v1/token')) {
+      chamadas.refresh++;
+      if (!refreshOk) return { ok: false, status: 503, json: async () => null };
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({ user_id: 'uid1', id_token: `t${chamadas.refresh}`, refresh_token: 'r', expires_in: '3600' }),
+      };
+    }
+    chamadas.dados.push({ url, method: opts.method });
+    if (statusDados === 'rede') throw new Error('offline');
+    return { ok: statusDados < 400, status: statusDados, json: async () => ({ name: '-Npush' }) };
+  };
+  const fb = new FirebaseSession({
+    apiKey: 'k',
+    databaseURL: 'https://x.firebaseio.com',
+    loadAuth: async () => null,
+    saveAuth: async () => {},
+    fetchImpl,
+  });
+  fb.idToken = 't0';
+  fb._refreshToken = 'r';
+  const reconexoes = [];
+  fb._streams.add({ _reconnect: (m) => reconexoes.push(m), close() {} });
+  return { fb, chamadas, reconexoes };
+}
+
+test('putQuiet com 401: renova sem reconectar streams, retenta uma vez e não lança', async () => {
+  const { fb, chamadas, reconexoes } = sessaoLateral();
+  const r = await fb.putQuiet('/thumbs/d1', { env: 'x' });
+  assert.equal(r.status, 401);
+  assert.equal(chamadas.refresh, 1);
+  assert.equal(chamadas.dados.length, 2); // original + 1 retry
+  assert.ok(chamadas.dados[1].url.includes('auth=t1'), 'retry com o token novo');
+  assert.deepEqual(reconexoes, [], 'nenhum stream reconectado');
+  fb.stop();
+});
+
+test('caminho lateral: no máximo 1 renovação a cada 10 min (compartilhada entre os métodos)', async (t) => {
+  const { fb, chamadas, reconexoes } = sessaoLateral({ statusDados: 403 });
+  let agora = 1_000_000;
+  t.mock.method(Date, 'now', () => agora);
+  await fb.postQuiet('/devices/d1/up', 'env');
+  await fb.putQuiet('/thumbs/d1', {});
+  await fb.deleteQuiet('/thumbs/d1');
+  await fb.getQuiet('/devices/d1/up', { shallow: true });
+  assert.equal(chamadas.refresh, 1);
+  agora += QUIET_REFRESH_MS - 1;
+  await fb.putQuiet('/thumbs/d1', {});
+  assert.equal(chamadas.refresh, 1);
+  agora += 1;
+  await fb.putQuiet('/thumbs/d1', {});
+  assert.equal(chamadas.refresh, 2);
+  assert.deepEqual(reconexoes, []);
+  fb.stop();
+});
+
+test('caminho lateral: rede fora vira status 0; refresh que falha também não lança', async () => {
+  const off = sessaoLateral({ statusDados: 'rede' });
+  assert.deepEqual(await off.fb.postQuiet('/devices/d1/up', 'env'), { status: 0, body: null });
+  off.fb.stop();
+  const semRefresh = sessaoLateral({ refreshOk: false });
+  const r = await semRefresh.fb.deleteQuiet('/thumbs/d1');
+  assert.equal(r.status, 401);
+  assert.equal(semRefresh.chamadas.dados.length, 1, 'sem retry quando a renovação falhou');
+  assert.deepEqual(semRefresh.reconexoes, []);
+  semRefresh.fb.stop();
+});
+
+test('getQuiet shallow e postQuiet devolvem o corpo', async () => {
+  const { fb, chamadas } = sessaoLateral({ statusDados: 200 });
+  const r = await fb.postQuiet('/devices/d1/up', 'env');
+  assert.deepEqual(r, { status: 200, body: { name: '-Npush' } });
+  await fb.getQuiet('/devices/d1/up', { shallow: true });
+  assert.ok(chamadas.dados[1].url.endsWith('&shallow=true'));
+  assert.equal(chamadas.refresh, 0);
+  fb.stop();
+});
+
+test('caminho normal continua reconectando os streams no 401 (comportamento antigo)', async () => {
+  const { fb, reconexoes } = sessaoLateral({ statusDados: 401 });
+  await assert.rejects(() => fb.put('/devices/d1/report', {}), /rtdb_PUT_401/);
+  assert.deepEqual(reconexoes, ['token_renovado']);
   fb.stop();
 });

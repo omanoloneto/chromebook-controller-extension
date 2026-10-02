@@ -50,14 +50,16 @@ let ultimoEstado = 'connecting';
 let estadoMudouEm = Date.now();
 let ultimoAutoRestart = 0;
 
-function broadcast(state, detail, teacher) {
-  if (detail) console.log('[CdA]', state, '-', detail);
+/// `detail` é só para o console (texto técnico nunca vai para a tela);
+/// `motivo` é um código fixo que o popup traduz (hoje: 'vinculo_divergente').
+function broadcast(state, detail, teacher, motivo = null) {
+  if (detail) console.info('[CdA]', state, '-', detail);
   if (state !== ultimoEstado) {
     ultimoEstado = state;
     estadoMudouEm = Date.now();
   }
   chrome.runtime
-    .sendMessage({ cmd: IPC.STATE_CHANGED, state, detail: detail ?? null, teacher: teacher ?? null })
+    .sendMessage({ cmd: IPC.STATE_CHANGED, state, motivo, teacher: teacher ?? null })
     .catch(() => {});
 }
 
@@ -223,11 +225,16 @@ async function desvincular(id) {
   await storeSet(STORAGE_BINDING, null);
   await storeSet(STORAGE_REPLAY, null);
   await storeSet(STORAGE_CLASSVIEW, null); // deixa de ser telão junto com o vínculo
+  // Trava, prova, chat, pedidos e limites eram deste vínculo.
+  await chrome.runtime.sendMessage({ cmd: IPC.TURMA_LIMPAR }).catch(() => {});
   if (!fb?.idToken) return; // sem sessão Firebase, só limpa o local
   const base = `/devices/${id.deviceId}`;
-  for (const sufixo of ['bind', 'report', 'ack', 'presence']) {
+  for (const sufixo of ['bind', 'report', 'ack', 'presence', 'snapshot']) {
     await fb.delete(`${base}/${sufixo}`).catch(() => {});
   }
+  // Escritas novas (rules podem estar atrasadas): caminho lateral.
+  await fb.deleteQuiet(`${base}/up`);
+  await fb.deleteQuiet(`/thumbs/${id.deviceId}`);
   await rotateToken(id);
 }
 
@@ -246,7 +253,8 @@ async function aplicarNumeroUnidade(numero) {
     }
     return { ok: true };
   } catch (e) {
-    return { ok: false, error: String(e?.message ?? e) };
+    console.warn('[CdA] set_unit falhou:', e?.message ?? e);
+    return { ok: false, error: 'executor_falhou' };
   }
 }
 
@@ -282,7 +290,8 @@ async function capturarFotoCamera() {
     const jpegB64 = canvas.toDataURL('image/jpeg', 0.6).split(',')[1];
     return { ok: true, jpegB64 };
   } catch (e) {
-    return { ok: false, error: String(e?.message ?? e) };
+    console.warn('[CdA] captura da câmera falhou:', e?.message ?? e);
+    return { ok: false, error: 'camera_falhou' };
   } finally {
     for (const t of stream.getTracks()) t.stop(); // apaga o LED
   }
@@ -290,10 +299,15 @@ async function capturarFotoCamera() {
 
 /// Mapeia um comando decifrado para o executor no service worker.
 async function executarComando(cmd) {
+  // `cmd`/`target` por ÚLTIMO: uma chave do payload nunca troca o executor
+  // (ex.: payload {cmd:'store:set'} viraria escrita no storage pelo proxy).
   const exec = (ipcCmd, extras) =>
     chrome.runtime
-      .sendMessage({ cmd: ipcCmd, ...(extras ?? {}) })
-      .catch((e) => ({ ok: false, error: String(e) }))
+      .sendMessage({ ...(extras ?? {}), target: undefined, cmd: ipcCmd })
+      .catch((e) => {
+        console.warn('[CdA] executor no SW falhou:', e?.message ?? e);
+        return { ok: false, error: 'executor_falhou' };
+      })
       .then((res) => res ?? { ok: false, error: 'sem_resposta' });
 
   switch (cmd.type) {
@@ -323,6 +337,17 @@ async function executarComando(cmd) {
     case MessageType.CAPTURE_CAMERA:
       // Captura precisa de DOM/getUserMedia — roda AQUI no offscreen, não no SW.
       return capturarFotoCamera();
+    // Recursos de turma: quem tem janelas/abas/storage é o SW.
+    case MessageType.CHAT_MESSAGE:
+      // A hora do balão é a do envio pelo professor (PC que estava desligado).
+      return exec(IPC.EXEC_CHAT_MESSAGE, { ...(cmd.payload ?? {}), ts: Number(cmd.ts) || null });
+    case MessageType.UNBLOCK_RESULT:
+      return exec(IPC.EXEC_UNBLOCK_RESULT, cmd.payload);
+    case MessageType.SET_LOCK:
+      // payload já limpo pelo CloudClient, com o prazo local calculado.
+      return exec(IPC.EXEC_SET_LOCK, cmd.payload);
+    case MessageType.SET_EXAM:
+      return exec(IPC.EXEC_SET_EXAM, cmd.payload);
     default:
       return { ok: false, error: 'tipo_desconhecido' };
   }
@@ -337,7 +362,7 @@ async function mainLoop() {
       const id = await ensureIdentity();
       const token = await ensurePairToken();
 
-      broadcast('connecting', 'autenticando no Firebase…');
+      broadcast('connecting', 'autenticando');
       await ensureFirebase();
       await registrar(id, token);
 
@@ -379,6 +404,11 @@ async function mainLoop() {
         getReport: async () =>
           (await chrome.runtime.sendMessage({ cmd: IPC.TABS_REPORT }).catch(() => null))
             ?.report ?? null,
+        // Miniatura da grade ao vivo: captureVisibleTab só existe no SW.
+        capturarThumb: async () =>
+          (await chrome.runtime.sendMessage({ cmd: IPC.CAPTURE_THUMB }).catch(() => null)) ?? {
+            motivo: 'falhou',
+          },
         loadReplay: () => storeGet(STORAGE_REPLAY),
         saveReplay: (r) => storeSet(STORAGE_REPLAY, r),
       });
@@ -391,21 +421,42 @@ async function mainLoop() {
         broadcast('pairing', 'professor desvinculou este PC');
       } else if (motivo === 'foreign_bind') {
         // bind no banco não bate com o professor pinado (TOFU) — não obedece.
-        broadcast('connecting', 'vínculo divergente no servidor — desvincule pelo popup');
+        broadcast('connecting', 'vínculo divergente no servidor', null, 'vinculo_divergente');
         await sleep(5000);
       }
       // 'stopped' (OFF_RESTART/OFF_UNBIND): o loop segue e relê o estado.
     } catch (e) {
-      broadcast('connecting', String(e?.message ?? e));
+      broadcast('connecting', String(e?.message ?? e)); // só no console
       await sleep(4000);
     }
   }
 }
 
-chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+// Tudo que chega ao offscreen vem do service worker (tellOffscreen e o `up`):
+// nem página nem content script falam direto com ele — o SW decide o que
+// sobe (rate-limit, pedido montado do registro do bloqueio) e quem desvincula.
+const URL_DO_SW = chrome.runtime.getURL('background/service-worker.js');
+
+chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg?.target !== TARGET_OFFSCREEN) return false;
+  if (sender?.id !== chrome.runtime.id || sender?.url !== URL_DO_SW) {
+    sendResponse({ ok: false, erro: 'origem_invalida' });
+    return false;
+  }
   (async () => {
-    if (msg.cmd === IPC.OFF_RESTART) {
+    if (msg.cmd === IPC.UP_SEND) {
+      const cliente = currentClient;
+      if (!cliente) {
+        sendResponse({ ok: false, erro: 'sem_conexao' });
+        return;
+      }
+      try {
+        sendResponse(await cliente.sendUp(msg.tipo, msg.payload, msg.mid));
+      } catch (e) {
+        console.warn('[CdA] up falhou:', e?.message ?? e);
+        sendResponse({ ok: false, erro: 'sem_conexao' });
+      }
+    } else if (msg.cmd === IPC.OFF_RESTART) {
       identity = null; // força reler o keypair (o timer de auto-↻ não precisa)
       reiniciarConexao();
       sendResponse({ ok: true });
@@ -413,7 +464,7 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
       const id = await ensureIdentity();
       await desvincular(id);
       bindWaitCancel?.();
-      broadcast('pairing', 'desvinculado — escaneie o QR para parear de novo');
+      broadcast('pairing', 'desvinculado pelo popup');
       sendResponse({ ok: true });
     } else {
       sendResponse({ ok: false, error: 'cmd_desconhecido' });

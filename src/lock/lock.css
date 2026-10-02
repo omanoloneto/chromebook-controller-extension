@@ -1,0 +1,64 @@
+/* Trava "Olhos em mim" (ChromeOS): tela cheia no azul da extensão, só o
+   recado do professor. Sem nada clicável. */
+
+:root {
+  --accent-fill: #2962ff;
+  --on-accent: #fff;
+  --on-accent-muted: rgba(255, 255, 255, 0.9);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  overflow: hidden;
+  background: radial-gradient(1400px 800px at 50% 30%, #3d72ff, var(--accent-fill) 70%);
+  color: var(--on-accent);
+  font-family: system-ui, "Segoe UI", Roboto, sans-serif;
+  text-align: center;
+  user-select: none;
+  cursor: default;
+}
+
+main {
+  max-width: 880px;
+}
+
+.cadeado {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.95;
+}
+
+.cadeado circle {
+  fill: currentColor;
+  stroke: none;
+}
+
+h1 {
+  margin: 28px 0 0;
+  font-size: 42px;
+  font-weight: 300;
+  line-height: 1.25;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.espera {
+  margin: 20px 0 0;
+  font-size: 18px;
+  color: var(--on-accent-muted);
+}
