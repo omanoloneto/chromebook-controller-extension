@@ -452,6 +452,13 @@ export class CloudClient {
 
   // ---- Trava, prova e grade ao vivo (ext >= 0.7.0) ---------------------------
 
+  /// Envelope LIGADO velho demais para valer (> 12 h). `env.ts` é relógio de
+  /// servidor do professor: compara com o relógio deste PC corrigido pelo do
+  /// servidor, para um PC com a data errada não ignorar (nem religar) a trava.
+  _ligadoVelho(envTs) {
+    return envTs < this.agoraCorrigido() - ESTADO_LIGADO_IDADE_MAX_MS;
+  }
+
   /// set_lock: `rev >= lockRev` (igual REAPLICA — refaz a janela na reentrega);
   /// o SW guarda a cópia local e destrava sozinho no prazo.
   async _applyLock(envelope) {
@@ -467,7 +474,7 @@ export class CloudClient {
     const envTs = Number(msg.ts) || 0;
     const agora = this.agora();
     let prazo = prazoLocal(p.ate, envTs, TRAVA_TETO_MS, agora);
-    if (p.on && envTs < agora - ESTADO_LIGADO_IDADE_MAX_MS) prazo = agora;
+    if (p.on && this._ligadoVelho(envTs)) prazo = agora;
     const ack = await this.onCommand?.({
       type: MessageType.SET_LOCK,
       id: msg.id,
@@ -496,7 +503,7 @@ export class CloudClient {
     const envTs = Number(msg.ts) || 0;
     const agora = this.agora();
     let prazo = prazoLocal(p.ate, envTs, PROVA_TETO_MS, agora);
-    if (p.on && envTs < agora - ESTADO_LIGADO_IDADE_MAX_MS) prazo = agora;
+    if (p.on && this._ligadoVelho(envTs)) prazo = agora;
     const ack = await this.onCommand?.({
       type: MessageType.SET_EXAM,
       id: msg.id,

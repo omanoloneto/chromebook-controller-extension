@@ -156,6 +156,23 @@ test('lock/prova LIGADA em envelope de mais de 12 h não liga (re-pareamento com
   t.c.stop();
 });
 
+test('lock: "envelope velho" (12 h) usa o relógio do PC corrigido pelo servidor', async () => {
+  // PC 13 h ADIANTADO: a trava de agora liga (não é tratada como velha).
+  const t = await montar({ fb: fbFalso({ lastSeen: SERVIDOR }), pcAtrasoMs: -13 * 3600000 });
+  const t2 = await montar({ fb: fbFalso({ lastSeen: SERVIDOR }), pcAtrasoMs: 13 * 3600000 });
+  try {
+    await t.rotear('/state/lock', await t.env(MessageType.SET_LOCK, { rev: 1, on: true, ate: SERVIDOR + 20 * MIN }));
+    assert.equal(daTrava(t.comandos)[0].payload.prazo, t.relogio.agora + 20 * MIN);
+    // PC 13 h ATRASADO: o envelope de 13 h atrás não religa.
+    const velho = SERVIDOR - 13 * 3600000;
+    await t2.rotear('/state/lock', await t2.env(MessageType.SET_LOCK, { rev: 1, on: true, ate: velho + 20 * MIN }, velho));
+    assert.equal(daTrava(t2.comandos)[0].payload.prazo, t2.relogio.agora);
+  } finally {
+    t.c.stop();
+    t2.c.stop();
+  }
+});
+
 test('patch em "/" não é lido como nó inteiro (sem bind ≠ desvinculado) e aplica o filho', async () => {
   const t = await montar();
   const e = await t.env(MessageType.SET_LOCK, { rev: 1, on: false });
