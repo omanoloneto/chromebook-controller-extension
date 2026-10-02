@@ -90,6 +90,7 @@ export class CloudClient {
     this.acksAplicados = []; // últimos acks (aplicado.acks do relatório)
     this._upDesligadoAte = 0; // mono: 401/403 persistente no up
     this._podando = false;
+    this._upFila = Promise.resolve(); // sela+POST do up, um de cada vez
     this._upPodaTimer = null;
     this._relatorioTimer = null;
     // Grade ao vivo: prazo no relógio MONOTÔNICO deste PC.
@@ -620,7 +621,18 @@ export class CloudClient {
 
   /// Sela e grava um item em up/ (POST, caminho lateral). Único ponto de saída
   /// do ChromeOS (o rate-limit fica no SW, antes daqui). → {ok, mid} | {ok:false, erro}
-  async sendUp(tipo, payload, mid) {
+  ///
+  /// Um envio por vez: o push-id é dado pelo servidor na chegada do POST, e o
+  /// professor lê up/ nessa ordem exigindo seq crescente. Dois envios
+  /// paralelos (chat e mão, que têm limites separados) podiam chegar trocados
+  /// e o selado antes era descartado como replay.
+  sendUp(tipo, payload, mid) {
+    const envio = this._upFila.then(() => this._enviarUp(tipo, payload, mid));
+    this._upFila = envio.catch(() => {});
+    return envio;
+  }
+
+  async _enviarUp(tipo, payload, mid) {
     if (!this.running || !this.key) return { ok: false, erro: 'sem_conexao' };
     if (this.agoraMono() < this._upDesligadoAte) return { ok: false, erro: 'sem_permissao' };
     const limpo = limparPayloadUp(tipo, payload);

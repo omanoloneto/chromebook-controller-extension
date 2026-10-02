@@ -281,6 +281,34 @@ test('sendUp: sela {type, mid, payload} limpo e grava em devices/{id}/up', async
   t.c.stop();
 });
 
+test('sendUp: dois envios juntos chegam na ordem em que foram selados', async () => {
+  const fb = fbFalso();
+  // O primeiro POST demora mais que o segundo: sem fila, o segundo chegaria
+  // antes e o professor descartaria o primeiro (seq menor depois de um maior).
+  const atrasos = [30, 0];
+  const postar = fb.postQuiet.bind(fb);
+  fb.postQuiet = async (path, v) => {
+    await new Promise((r) => setTimeout(r, atrasos.shift() ?? 0));
+    return postar(path, v);
+  };
+  const t = await montar({ fb });
+  try {
+    const [a, b] = await Promise.all([
+      t.c.sendUp('chat', { texto: 'primeiro' }),
+      t.c.sendUp('raise_hand', {}),
+    ]);
+    assert.equal(a.ok, true);
+    assert.equal(b.ok, true);
+    const posts = fb.log.filter((l) => l[0] === 'postQuiet');
+    assert.equal(posts.length, 2);
+    const m1 = await open(t.key, posts[0][2]);
+    const m2 = await open(t.key, posts[1][2]);
+    assert.ok(m1.seq < m2.seq, 'seq cresce na ordem de chegada');
+  } finally {
+    t.c.stop();
+  }
+});
+
 test('relatório leva aplicado {trava, prova, acks}', async () => {
   const fb = fbFalso();
   const t = await montar({ fb, ack: { ok: false, error: 'sem_sessao' } });
