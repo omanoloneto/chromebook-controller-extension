@@ -299,9 +299,11 @@ async function capturarFotoCamera() {
 
 /// Mapeia um comando decifrado para o executor no service worker.
 async function executarComando(cmd) {
+  // `cmd`/`target` por ÚLTIMO: uma chave do payload nunca troca o executor
+  // (ex.: payload {cmd:'store:set'} viraria escrita no storage pelo proxy).
   const exec = (ipcCmd, extras) =>
     chrome.runtime
-      .sendMessage({ cmd: ipcCmd, ...(extras ?? {}) })
+      .sendMessage({ ...(extras ?? {}), target: undefined, cmd: ipcCmd })
       .catch((e) => {
         console.warn('[CdA] executor no SW falhou:', e?.message ?? e);
         return { ok: false, error: 'executor_falhou' };
