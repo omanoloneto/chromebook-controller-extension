@@ -270,7 +270,12 @@ async function execFecharTudo({ closeWindows = false, fimDeAula = false } = {}) 
     if (todas.length > 0) {
       // Fechar a última aba fecharia a janela — abre uma vazia antes.
       await chrome.tabs.create({});
-      await chrome.tabs.remove(todas.map((t) => t.id));
+      await chrome.tabs.remove(todas.map((t) => t.id)).catch(async () => {
+        // Uma aba sumiu entre a consulta e o remove (a janela de chat que o
+        // fim de aula acabou de fechar, ou o aluno): tabs.remove para no
+        // primeiro id inválido — fecha o resto uma a uma.
+        for (const t of todas) await chrome.tabs.remove(t.id).catch(() => {});
+      });
     }
     return { ok: true };
   } catch (e) {
@@ -848,7 +853,9 @@ async function limparTurma({ desligarEstado = false } = {}) {
     await areaSessao()?.remove([SESSAO_CHAT, SESSAO_PEDIDOS, SESSAO_CHAT_JANELA]);
     await chrome.storage.local.remove(STORAGE_LIMITES);
   }).catch(() => {});
-  if (janelaChat != null) chrome.windows.remove(janelaChat).catch(() => {});
+  // Esperar: o close_all_tabs logo depois não pode tentar fechar a aba dela
+  // já fechando (tabs.remove para no primeiro id inválido e sobra aba aberta).
+  if (janelaChat != null) await chrome.windows.remove(janelaChat).catch(() => {});
   naoLidasBadge = 0;
   atualizarBadgeChat();
   if (!desligarEstado) return;
