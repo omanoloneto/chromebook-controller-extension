@@ -37,6 +37,9 @@
     "https://identitytoolkit.googleapis.com/*",
     "https://securetoken.googleapis.com/*"
   ],
+  "optional_host_permissions": [
+    "<all_urls>"
+  ],
   "minimum_chrome_version": "133",
   "content_scripts": [
     {
