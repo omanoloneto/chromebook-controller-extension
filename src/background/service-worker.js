@@ -968,6 +968,7 @@ async function execSetLock({ rev, envTs, on, texto, mute, prazo } = {}) {
       prazo: mesmo && typeof atual.prazo === 'number' ? atual.prazo : Number(prazo) || 0,
       mutadas: atual?.mutadas ?? [],
       janela: atual?.janela ?? null,
+      chatMinimizado: atual?.chatMinimizado === true,
     });
   });
   await garantirTrava();
@@ -988,18 +989,31 @@ async function garantirTravaAgora() {
   if (!t) return;
   if (travaAtiva(t)) {
     let janela = t.janela != null ? await chrome.windows.get(t.janela).catch(() => null) : null;
+    let chatMinimizado = t.chatMinimizado === true;
     if (!janela) {
       janela = await chrome.windows
         .create({ url: PAGINA_TRAVA(), type: 'popup', state: 'fullscreen', focused: true })
         .catch(() => null);
-      // A janela de chat aberta sai da frente (volta ao destravar, se houver não lidas).
+      // A janela de chat aberta sai da frente e volta ao destravar (só se foi
+      // a trava que a minimizou — a que o aluno minimizou fica como estava).
       const chatId = await lerSessao(SESSAO_CHAT_JANELA, null);
-      if (chatId != null) await chrome.windows.update(chatId, { state: 'minimized' }).catch(() => {});
+      const chat = chatId != null ? await chrome.windows.get(chatId).catch(() => null) : null;
+      if (chat && chat.state !== 'minimized') {
+        await chrome.windows.update(chat.id, { state: 'minimized' }).catch(() => {});
+        chatMinimizado = true;
+      }
     } else {
       if (janela.state !== 'fullscreen') {
         await chrome.windows.update(janela.id, { state: 'fullscreen' }).catch(() => {});
       }
       if (!janela.focused) await chrome.windows.update(janela.id, { focused: true }).catch(() => {});
+      // A aba da trava saiu da página (link arrastado, abrir arquivo…): volta,
+      // senão a janela em tela cheia viraria um navegador livre.
+      for (const aba of await chrome.tabs.query({ windowId: janela.id }).catch(() => [])) {
+        if (!String(aba.pendingUrl || aba.url || '').startsWith(PAGINA_TRAVA())) {
+          await chrome.tabs.update(aba.id, { url: PAGINA_TRAVA() }).catch(() => {});
+        }
+      }
     }
     let mutadas = Array.isArray(t.mutadas) ? [...t.mutadas] : [];
     if (t.mute) {
@@ -1012,20 +1026,23 @@ async function garantirTravaAgora() {
       await desmutar(mutadas);
       mutadas = [];
     }
-    await gravarTrava({ ...t, janela: janela?.id ?? null, mutadas });
+    await gravarTrava({ ...t, janela: janela?.id ?? null, mutadas, chatMinimizado });
     chrome.alarms.create(ALARME_TRAVA, { periodInMinutes: 0.5 });
     chrome.alarms.create(ALARME_TRAVA_FIM, { when: t.prazo + 250 });
     return;
   }
   // Destravou (on:false, prazo vencido, fim de aula, desvincular).
   const tinhaJanela = t.janela != null;
-  if (!tinhaJanela && !t.mutadas?.length) return;
+  if (!tinhaJanela && !t.mutadas?.length && !t.chatMinimizado) return;
   if (tinhaJanela) await chrome.windows.remove(t.janela).catch(() => {});
   await desmutar(t.mutadas);
-  await gravarTrava({ ...t, janela: null, mutadas: [] });
+  await gravarTrava({ ...t, janela: null, mutadas: [], chatMinimizado: false });
   chrome.alarms.clear(ALARME_TRAVA);
   chrome.alarms.clear(ALARME_TRAVA_FIM);
-  // Mensagem que chegou durante a trava: a janela de chat abre agora.
+  // A conversa que a trava tirou da frente volta; mensagem que chegou durante
+  // a trava abre a janela agora.
+  const chatId = t.chatMinimizado ? await lerSessao(SESSAO_CHAT_JANELA, null) : null;
+  if (chatId != null) await chrome.windows.update(chatId, { state: 'normal' }).catch(() => {});
   const chat = await lerSessao(SESSAO_CHAT, null);
   if (chat?.naoLidas > 0) abrirChat({ foco: false }).catch(() => {});
 }
@@ -1055,6 +1072,12 @@ chrome.tabs.onCreated?.addListener((aba) => {
     if (!travaAtiva(t) || aba.windowId === t.janela) return;
     if (String(aba.pendingUrl || aba.url || '').startsWith(PAGINA_TRAVA())) return;
     chrome.tabs.remove(aba.id).catch(() => {}); // aba NOVA durante a trava
+  });
+});
+chrome.tabs.onUpdated?.addListener((_id, mudou, aba) => {
+  if (!mudou.url || mudou.url.startsWith(PAGINA_TRAVA())) return;
+  lerTrava().then((t) => {
+    if (travaAtiva(t) && aba.windowId === t.janela) garantirTrava(); // saiu da página da trava
   });
 });
 chrome.alarms.onAlarm.addListener((alarme) => {

@@ -74,7 +74,7 @@ export const STORAGE_CLASSVIEW = 'classview'; // {rev, aula, pcs, recebidoEm} (p
 export const STORAGE_VERSION = 'extVersion'; // versão da extensão (SW grava; offscreen lê — getManifest não existe no offscreen)
 export const STORAGE_SCHOOL_ORIGINS = 'schoolOrigins'; // string[] origins a preservar na limpeza de sessão (ausente = DEFAULT_SCHOOL_ORIGINS)
 export const STORAGE_WIPE_PENDING = 'wipePending'; // true enquanto uma limpeza de sessão não concluiu (retry no próximo onStartup)
-export const STORAGE_TRAVA = 'trava'; // {rev, envTs, on, texto, mute, prazo, mutadas[], janela, encerrada?} ("Olhos em mim", cópia local)
+export const STORAGE_TRAVA = 'trava'; // {rev, envTs, on, texto, mute, prazo, mutadas[], janela, chatMinimizado?, encerrada?} ("Olhos em mim", cópia local)
 export const STORAGE_PROVA = 'prova'; // {rev, envTs, on, allow[], inicio, prazo?, encerrada?} (modo prova, cópia local)
 export const STORAGE_LIMITES = 'limites'; // rate-limit do `up` (src/lib/limites.js)
 
