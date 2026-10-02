@@ -3,6 +3,8 @@
 // Aqui ficam só helpers puros (sem chrome.*); a execução dos comandos é feita
 // pelo service worker.
 
+import { normalizarPadrao, MAX_RULES } from './rules.js';
+
 export const PROTOCOL_VERSION = 1;
 
 // ---- Pareamento por QR (v4) ---------------------------------------------------
@@ -27,10 +29,14 @@ export const MessageType = Object.freeze({
   SET_UNIT: 'set_unit',
   CAPTURE_CAMERA: 'capture_camera', // app -> ext: tira 1 foto da webcam do aluno
   CAMERA_SNAPSHOT: 'camera_snapshot', // ext -> app: foto cifrada em /snapshot
-  // Reservados (futuro):
-  LOCK_SCREEN: 'lock_screen',
-  UNLOCK_SCREEN: 'unlock_screen',
-  FOCUS_MODE: 'focus_mode',
+  // Recursos de turma (ext >= 0.7.0). lock_screen/unlock_screen/focus_mode
+  // foram aposentados: trava e prova são estado (state/lock, state/exam).
+  CHAT_MESSAGE: 'chat_message', // app -> ext (cmd): mensagem p/ a janela de chat
+  UNBLOCK_RESULT: 'unblock_result', // app -> ext (cmd): resposta a um pedido de liberação
+  SET_LOCK: 'set_lock', // app -> ext (state/lock): "Olhos em mim"
+  SET_EXAM: 'set_exam', // app -> ext (state/exam): modo prova
+  SET_MONITOR: 'set_monitor', // app -> ext (state/monitor): grade ao vivo
+  THUMB_SNAPSHOT: 'thumb_snapshot', // ext -> app (/thumbs/{id}): miniatura da tela
 });
 
 let seq = 0;
@@ -167,4 +173,86 @@ export function parseClassView(payload) {
     });
 
   return { rev, aula, pcs };
+}
+
+// ---- Recursos de turma: trava, prova, grade ao vivo (ext >= 0.7.0) -------------
+// Prazos NUNCA comparam relógios de máquinas diferentes: `ate` e `env.ts` vêm
+// do relógio de servidor do professor, e o PC converte em prazo LOCAL
+// `agora + clamp(ate − env.ts, 0, TETO)`.
+
+export const MAX_TRAVA_TEXTO = 200;
+export const TRAVA_TETO_MS = 2 * 3600 * 1000;
+export const PROVA_TETO_MS = 4 * 3600 * 1000;
+export const MONITOR_TETO_MS = 45000;
+export const MONITOR_JANELA_TS_MS = 120000;
+export const MAX_APLICADO_ACKS = 20;
+export const MAX_PROVA_INICIO = 2048;
+
+const numeroPositivo = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0;
+
+/// Prazo local (ms do relógio deste PC) para um `ate` do professor.
+export function prazoLocal(ate, envTs, teto, agora) {
+  const resto = Number(ate) - Number(envTs);
+  return agora + (Number.isFinite(resto) ? Math.min(Math.max(resto, 0), teto) : 0);
+}
+
+const cortarCp = (s, max) => Array.from(String(s ?? '')).slice(0, max).join('');
+
+/// set_lock {rev, on, texto, mute, ate} limpo, ou null (inválido = ignora).
+export function limparLock(payload) {
+  const p = payload && typeof payload === 'object' ? payload : null;
+  if (!p || !numeroPositivo(p.rev) || typeof p.on !== 'boolean') return null;
+  if (p.on && !numeroPositivo(p.ate)) return null;
+  const texto = cortarCp(String(p.texto ?? '').trim(), MAX_TRAVA_TEXTO);
+  return {
+    rev: p.rev,
+    on: p.on,
+    texto: texto || 'Olhos no professor',
+    mute: p.mute === true,
+    ate: numeroPositivo(p.ate) ? p.ate : 0,
+  };
+}
+
+/// set_exam {rev, on, allow, inicio?, ate} limpo, ou null. `allow` segue a
+/// normalização e os caps das regras; `inicio` só http(s) ≤ 2048.
+export function limparExam(payload) {
+  const p = payload && typeof payload === 'object' ? payload : null;
+  if (!p || !numeroPositivo(p.rev) || typeof p.on !== 'boolean') return null;
+  if (p.on && !numeroPositivo(p.ate)) return null;
+  const allow = [];
+  for (const r of Array.isArray(p.allow) ? p.allow : []) {
+    const pattern = typeof r?.pattern === 'string' ? normalizarPadrao(r.pattern) : '';
+    if (pattern && !allow.some((x) => x.pattern === pattern)) allow.push({ pattern });
+    if (allow.length >= MAX_RULES) break;
+  }
+  const inicio =
+    typeof p.inicio === 'string' && p.inicio.length <= MAX_PROVA_INICIO && isSafeHttpUrl(p.inicio)
+      ? p.inicio
+      : null;
+  return { rev: p.rev, on: p.on, allow, inicio, ate: numeroPositivo(p.ate) ? p.ate : 0 };
+}
+
+/// set_monitor {rev, ate} limpo, ou null.
+export function limparMonitor(payload) {
+  const p = payload && typeof payload === 'object' ? payload : null;
+  if (!p || !numeroPositivo(p.rev) || !numeroPositivo(p.ate)) return null;
+  return { rev: p.rev, ate: p.ate };
+}
+
+/// Campo `aplicado` do tab_report: confirmação positiva para o professor.
+export function makeAplicado({ trava, prova, acks } = {}) {
+  const estado = (e) =>
+    e && numeroPositivo(e.rev) ? { rev: e.rev, on: e.on === true } : { rev: 0, on: false };
+  return {
+    trava: estado(trava),
+    prova: estado(prova),
+    acks: (Array.isArray(acks) ? acks : [])
+      .filter((a) => typeof a?.id === 'string' && a.id)
+      .slice(-MAX_APLICADO_ACKS)
+      .map((a) => ({
+        id: a.id.slice(0, 32),
+        ok: a.ok === true,
+        ...(typeof a.error === 'string' && a.error ? { error: a.error.slice(0, 40) } : {}),
+      })),
+  };
 }
