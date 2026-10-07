@@ -89,6 +89,35 @@
       }
     },
 
+    "midia": {
+      "$deviceId": {
+        ".read": "auth != null && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
+        "$mid": {
+          ".write": "auth != null && ((root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid && (root.child('school/meta/schoolUid').exists() && root.child('devices').child($deviceId).child('bind/teacherUid').val() === root.child('school/meta/schoolUid').val())) || (!newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))))",
+          ".validate": "$mid.matches(/^[A-Za-z0-9_-]{16}$/) && newData.hasChildren(['env', 'ts'])",
+          "env": { ".validate": "newData.isString() && newData.val().length < 65536" },
+          "ts":  { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+    "envios": {
+      "$deviceId": {
+        ".read": "auth != null && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
+        "$mid": {
+          ".write": "auth != null && ((root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid && (root.child('school/meta/schoolUid').exists() && root.child('devices').child($deviceId).child('bind/teacherUid').val() === root.child('school/meta/schoolUid').val())) || (!newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))))",
+          ".validate": "$mid.matches(/^[A-Za-z0-9_-]{16}$/) && newData.hasChildren(['u', 'r', 'partes', 'prontas', 'bytes', 'ts'])",
+          "u": { ".validate": "newData.val() === auth.uid" },
+          "r": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{22}$/)" },
+          "partes": { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 1000000" },
+          "prontas": { ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= newData.parent().child('partes').val()" },
+          "bytes": { ".validate": "newData.isNumber() && newData.val() >= 0" },
+          "ts":  { ".validate": "newData.isNumber()" },
+          "erro": { ".validate": "newData.isString() && newData.val().length < 40" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
     "archive": {
       "$deviceId": {
         ".read": "auth != null && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",

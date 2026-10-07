@@ -9,6 +9,17 @@ service firebase.storage {
       allow get: if request.auth != null && request.auth.token.get('email_verified', false) == true;
       allow delete: if request.auth != null && request.auth.uid == deviceUid;
     }
+    // Partes cifradas (midia-v1) de uma foto ou vídeo da Câmera a caminho do
+    // celular: o app apaga ao baixar, o PC apaga a sobra depois de um dia.
+    match /midia/{deviceUid}/{mid}/{file} {
+      allow create, update: if request.auth != null && request.auth.uid == deviceUid
+        && mid.matches('^[A-Za-z0-9_-]{16}$')
+        && file.matches('^[A-Za-z0-9_-]{22}_[0-9]{1,7}[.]bin$')
+        && request.resource.size <= 4 * 1024 * 1024 + 64;
+      allow get: if request.auth != null && request.auth.token.get('email_verified', false) == true;
+      allow delete: if request.auth != null && (request.auth.uid == deviceUid
+        || request.auth.token.get('email_verified', false) == true);
+    }
     match /{all=**} {
       allow read, write: if false;
     }

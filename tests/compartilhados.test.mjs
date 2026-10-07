@@ -25,9 +25,9 @@ test('rules e protocolo batem com tests/fixtures/compartilhados.sha256', () => {
     const real = createHash('sha256').update(readFileSync(new URL(arquivo, raiz))).digest('hex');
     assert.equal(real, hash, arquivo);
   }
-  // Valor fixado pela spec dos recursos de turma (§11).
+  // Valor fixado pelas fotos e vídeos da Câmera (protocolo §7.7: /midia e /envios).
   assert.equal(
     esperados['firebase/database.rules.json'],
-    'dba70cc56de1e4aa812f34b4ad5d3c733c5157da67f7517d2b85b033dea223a6',
+    '3ceba70d3d69ead8e60f809e7d66e1737c80a81f876a0acb1a37a66fc77456a7',
   );
 });

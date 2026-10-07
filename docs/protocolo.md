@@ -418,6 +418,16 @@ PC com Celita sem `meta/os` é de antes da 1.24.0 e conta como desatualizado.
 { "v":1, "type":"atualizar", "id":"a54", "payload":{} }
 ```
 
+**`enviar_midia`** / **`apagar_midia`** (agente Celita ≥ 0.14.0; app ≥ 0.22.0) —
+fotos e vídeos da Câmera (§7.7). `enviar_midia` pede que o PC suba um item em
+partes cifradas; o ack sai quando o envio entra na fila, e o progresso vem em
+`/envios`. `apagar_midia` apaga do PC (até 1000 por comando). Item que não
+está mais no PC: `ack {ok:false, error:"nao_encontrada"}`.
+```json
+{ "v":1, "type":"enviar_midia", "id":"a55", "payload":{ "mid":"AbCdEfGhIjKlMnOp" } }
+{ "v":1, "type":"apagar_midia", "id":"a56", "payload":{ "mids":["AbCdEfGhIjKlMnOp"] } }
+```
+
 **`chat_message`** (app ≥ 0.20.0, ext ≥ 0.7.0, Celita ≥ 0.13.0) — mensagem do
 professor para a janela de chat flutuante do aluno. `texto` 1..500, `de` ≤ 60,
 `mid` = id aleatório. O PC anexa ao histórico da sessão e abre a janela (se a
@@ -1042,6 +1052,42 @@ OBJ = {"v":1,"type":"archived_nav","user":"<login>","login":<ms>,
   console (§8, passo 2).
 - O `/history` (ficha por aula/aluno gravada pelo celular) **não muda**: os 15
   dias valem só para `/archive` e as fotos.
+
+### 7.7 Fotos e vídeos da Câmera (Celita OS ≥ 1.28.0)
+
+O app Câmera do Celita grava tudo em `<Imagens>/Câmera` da conta (foto `.jpg`,
+vídeo H.264/AAC `.mp4`). Conta de professor guarda as suas. No logout do aluno,
+antes de a pasta voltar ao original, o `celita-reset-session` move o que a
+Câmera gravou para `/var/lib/celita-camera/<conta>` (0700, só root): o próximo
+aluno não vê, e o professor ainda recolhe. Guardado vence em 15 dias
+(`mtime`), apagado pelo logout seguinte e pelo agente.
+
+**Índice** — `midia/{deviceId}/{mid} = { env, ts }`, escrito só pelo PC
+vinculado à escola; `env` (envelope de sempre, < 64 KiB) abre em:
+```json
+{ "v":1, "type":"midia", "mid":"AbCdEfGhIjKlMnOp", "tipo":"foto|video",
+  "nome":"Vídeo 2026-10-07 10.01.00.mp4", "conta":"aluno", "ts":1791378060000,
+  "bytes":7340032, "guardado":true, "expira":1792674060000,
+  "duracao":3.5, "thumb":"<JPEG base64 de até 240 px | null>" }
+```
+`mid` = base64url dos 12 primeiros bytes de `sha256(conta \0 nome \0 mtime_ns \0 tamanho)`:
+o mesmo antes e depois de o logout mover o arquivo. O agente varre a cada 20 s
+(e logo depois de um `apagar_midia`), publica o que é novo e apaga do índice o
+que sumiu. A miniatura e a duração saem de um processo à parte, como `nobody`,
+que só recebe o descritor já aberto: o arquivo pode ter sido fabricado pelo
+aluno, e decodificar vídeo como root seria abrir a porta.
+
+**Envio ("midia-v1")** — depois do `enviar_midia`, o PC escreve
+`envios/{deviceId}/{mid} = { u, r, partes, prontas, bytes, ts, erro? }`
+(`u` = uid do PC, `r` = 22 caracteres aleatórios por envio) e sobe cada parte
+de 4 MiB em `midia/{u}/{mid}/{r}_{n}.bin` como
+`nonce(12) || AES-GCM(dados, aad = "midia-v1|{mid}|{r}|{n}|{partes}")`,
+atualizando `prontas`. O aad prende a parte ao envio e à posição: trocada ou
+fora de ordem, não abre. O app apaga o nó antes de pedir (um envio velho não
+se confunde com o novo), baixa cada parte assim que fica pronta, monta o
+arquivo, salva na galeria (álbum "Controle de Aula") e apaga as partes e o nó.
+Sobra de envio que o app não recolheu o PC apaga depois de um dia. Erro do PC:
+`erro: "falhou"`.
 
 ## 8. Ordem de implantação (escola fechada + arquivo)
 
