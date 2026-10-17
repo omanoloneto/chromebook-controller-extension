@@ -164,9 +164,11 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   nav/{dia}/{pushId}: {env, ts}     # SÓ PC vinculado à escola — §7). Gravado pelo
                                     # agente; lido pelo app. nav = lotes nav-v1
                                     # (env = envelope, ts = serverTimestamp).
-  fotos/{dia}/{ts13}: {u, r}        # índice das fotos: ts13 = ms com 13 dígitos;
+  fotos/{dia}/{ts13}: {u, r, l?}    # índice das fotos: ts13 = ms com 13 dígitos;
                                     # u = uid anônimo do agente que enviou; r =
-                                    # 16 bytes aleatórios em base64url (22 chars).
+                                    # 16 bytes aleatórios em base64url (22 chars);
+                                    # l = true só na foto de entrada na conta
+                                    # (Celita >= 1.30; a galeria do app a usa).
                                     # dia = AAAA-MM-DD em UTC−3 (§7.2). Fora de
                                     # /devices/{id} de propósito: agente e
                                     # extensão fazem stream do nó inteiro.
@@ -828,7 +830,8 @@ ESCOLA = `school/meta/schoolUid` existe **e** `devices/{id}/bind/teacherUid`
   filhos (nada de valor cru no dia).
 - `nav/{dia}/{k}` = `{env: string < 65536, ts: number}`, nada mais.
 - `fotos/{dia}/{ts13}` — `ts13` casa `^[0-9]{13}$`; `{u, r}` com
-  `u === auth.uid` e `r` casando `^[A-Za-z0-9_-]{22}$`, nada mais.
+  `u === auth.uid` e `r` casando `^[A-Za-z0-9_-]{22}$`, e `l` opcional, só
+  `true`; nada mais.
 - Qualquer outro filho de `archive/{id}` é recusado.
 
 **Storage** — arquivo canônico `firebase/storage.rules` (espelhado nos dois
@@ -1011,7 +1014,9 @@ Vetor de paridade fixo: `agent/tests/fixtures/foto-v1.json` (Celita) =
 Envio: `POST {storage}/v0/b/{bucket}/o?name=<fotos/{uid}/{dia}/{ts13}_{r}.bin>`
 com `Authorization: Firebase <idToken>` e `Content-Type:
 application/octet-stream`; depois do upload,
-`PUT archive/{deviceId}/fotos/{dia}/{ts13} = {"u": uid, "r": r}`. Nunca
+`PUT archive/{deviceId}/fotos/{dia}/{ts13} = {"u": uid, "r": r}`, com
+`"l": true` a mais quando o motivo é `login` (Celita ≥ 1.30). A marca fica em
+claro, como o horário do nome: só diz que ali começou uma sessão. Nunca
 `getDownloadURL`. O app monta o caminho só com `u` e `r` do índice e baixa com
 `getData` (teto 1 MiB).
 
@@ -1127,6 +1132,14 @@ Sobra de envio que o app não recolheu o PC apaga depois de um dia. Erro do PC:
 3. APK 0.20.0 para os professores.
 Fora de ordem nada quebra: escrita nova negada mostra ao professor "O
 servidor da escola ainda não foi atualizado para este recurso".
+
+### Fotos de entrada na conta (app 0.24.0, Celita 1.30.0)
+
+1. `database.rules.json` com `l` no índice das fotos (superconjunto). Antes
+   das rules, o agente 1.30 teria o índice recusado e as fotos esperariam na
+   fila do PC.
+2. Pacote do Celita 1.30.0 e APK 0.24.0, em qualquer ordem: foto sem `l` só
+   não aparece na galeria (continua no histórico de cada PC).
 
 ### Push dos recados (app 0.23.0)
 

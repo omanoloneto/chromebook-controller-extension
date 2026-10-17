@@ -142,6 +142,7 @@
               ".validate": "$ts.matches(/^[0-9]{13}$/) && newData.hasChildren(['u', 'r'])",
               "u": { ".validate": "newData.val() === auth.uid" },
               "r": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{22}$/)" },
+              "l": { ".validate": "newData.val() === true" },
               "$other": { ".validate": false }
             }
           }

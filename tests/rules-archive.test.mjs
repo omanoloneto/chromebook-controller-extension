@@ -231,6 +231,13 @@ test('archive: $day, $ts, u, r, $k cru e campos estranhos são recusados', { ski
     req('PUT', `/archive/d1/fotos/${DIA}/${TS13}`, { auth: DEV1, body: { ...indice('uid-dev1'), x: 1 } }),
   );
   await negado(req('PUT', `/archive/d1/fotos/${DIA}/${TS13}`, { auth: DEV1, body: 'cru' }));
+  // Foto de entrada na conta (Celita 1.30): `l` só true.
+  for (const l of [false, 'sim', 1]) {
+    await negado(req('PUT', `/archive/d1/fotos/${DIA}/${TS13}`, { auth: DEV1, body: { ...indice('uid-dev1'), l } }));
+  }
+  await permitido(
+    req('PUT', `/archive/d1/fotos/${DIA}/${TS13}`, { auth: DEV1, body: { ...indice('uid-dev1'), l: true } }),
+  );
 
   await negado(req('POST', `/archive/d1/nav/${DIA}`, { auth: DEV1, body: 'envelope cru' }));
   await negado(req('PUT', `/archive/d1/nav/${DIA}/k1`, { auth: DEV1, body: 'envelope cru' }));
