@@ -78,6 +78,12 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
 /teachers/{teacherUid}/
   devices/{deviceId}: true          # roster que o app escuta
 
+/fcm/{uid}/{chave}: {t, ts}         # token do FCM de cada celular do professor
+                                    # (app >= 0.23); chave = sha256(t) em
+                                    # base64url, 22 chars. Só o dono lê e grava;
+                                    # quem lê é a Cloud Function avisarRecado
+                                    # (§3, `up`), que apaga o token recusado.
+
 /wallpapers/{teacherUid}/ {hash, jpeg, ts}   # jpeg = base64 em claro (risco aceito)
 
 /history/{teacherUid}/{sessionId}/  # histórico de aulas (OPCIONAL, gravado
@@ -727,6 +733,14 @@ Fila do aluno em `up/{pushId}` (POST; id do servidor). Texto em claro:
   nem apagado).
 - Apaga: pedido/mão — quem agir; chat — ninguém (o PC poda > 2 h e > 20);
   qualquer professor apaga > 12 h.
+- Push (app ≥ 0.23): a Cloud Function `avisarRecado` (`firebase/functions` do
+  app) dispara a cada filho novo de `up/` e manda ao FCM, em alta prioridade e
+  com validade de 2 h, `{t:"up", d: deviceId, k: pushId, e: envelope, p:
+  meta/pub, l: meta/label}` para os tokens de `/fcm/{uid}` do mesmo
+  destinatário acima — só quem recebe notificação ao vivo. O envelope vai como
+  chegou (≤ 3200 chars; maior não vai) e só o celular o decifra; com o app
+  fechado ele mostra a mesma notificação (mesmo id) do caminho ao vivo. Vetor:
+  `test/fixtures/push-v1.json` do app.
 
 ### `thumb_snapshot` (PC → professor)
 
@@ -765,6 +779,8 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
   professor vinculado ou MEMBRO pode apenas apagar filhos.
 - `state` aceita também `lock`, `exam`, `monitor`.
+- `/fcm/{uid}` — só o dono lê e grava; cada `{chave}` (`^[A-Za-z0-9_-]{22}$`)
+  é `{t: string 1..4095, ts: number}`, nada mais.
 - `/thumbs/{id}` — `.read` = device, professor vinculado ou MEMBRO; o device
   grava `{env < 262144, ts}` e nada mais; professor/MEMBRO só apaga.
 - `/home/menu` — leitura pública; escrita MEMBRO; `rev` obrigatório; `ids/$i`
@@ -1111,6 +1127,13 @@ Sobra de envio que o app não recolheu o PC apaga depois de um dia. Erro do PC:
 3. APK 0.20.0 para os professores.
 Fora de ordem nada quebra: escrita nova negada mostra ao professor "O
 servidor da escola ainda não foi atualizado para este recurso".
+
+### Push dos recados (app 0.23.0)
+
+1. `database.rules.json` com `/fcm` e a função `avisarRecado`
+   (`firebase deploy --only database,functions` na pasta `firebase/` do app).
+2. APK 0.23.0. Sem as rules, o registro do token falha calado e o app segue
+   notificando só com ele aberto; o PC não muda.
 
 ## 9. Tipos reservados (futuro)
 `lock_screen`, `unlock_screen` e `focus_mode` foram aposentados: a trava é

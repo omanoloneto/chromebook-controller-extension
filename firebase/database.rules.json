@@ -164,6 +164,20 @@
       }
     },
 
+    "fcm": {
+      "$uid": {
+        ".read": "auth != null && auth.uid === $uid",
+        ".write": "auth != null && auth.uid === $uid",
+        ".validate": "newData.hasChildren()",
+        "$k": {
+          ".validate": "$k.matches(/^[A-Za-z0-9_-]{22}$/) && newData.hasChildren(['t', 'ts'])",
+          "t": { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length < 4096" },
+          "ts": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        }
+      }
+    },
+
     "school": {
       "meta": {
         ".read": "auth != null && auth.token.email != null",
