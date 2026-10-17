@@ -25,9 +25,9 @@ test('rules e protocolo batem com tests/fixtures/compartilhados.sha256', () => {
     const real = createHash('sha256').update(readFileSync(new URL(arquivo, raiz))).digest('hex');
     assert.equal(real, hash, arquivo);
   }
-  // Valor fixado pela marca da foto de entrada (protocolo §7.3: `l` no índice das fotos).
+  // Valor fixado pelo Wi-Fi da escola (protocolo §9: `/school/wifi`).
   assert.equal(
     esperados['firebase/database.rules.json'],
-    '57108a022e6f2b76d4a42e31c498f4866b2f16716ff0b7e4cf81635da5832555',
+    'f765b422b4215646f7e226879afad69bf2710f14d86f71f6326cccc74cfb8b00',
   );
 });

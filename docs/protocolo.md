@@ -99,8 +99,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # owner-only. Retenção: até apagar na UI.
 
 /school/                            # workspace da escola (app >= 0.15; SÓ o app,
-                                    # o GTK do Celita e — só schoolUid — o agente;
-                                    # a extensão NUNCA lê /school). Escola
+                                    # o GTK do Celita e — só schoolUid e wifi/ — o
+                                    # agente; a extensão NUNCA lê /school). Escola
                                     # FECHADA: porteiro = MEMBRO (§4).
   meta/ {schoolUid, criadoEm}       # schoolUid = uid do FUNDADOR (bind/history/
                                     # wallpaper dele). meta: lida por qualquer conta
@@ -131,6 +131,13 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # {professor, turma} cifrado; heartbeat
                                     # renova ts; órfã >15min sofre takeover
                                     # (validado nas rules)
+  wifi/                             # Wi-Fi da escola (Celita OS >= 1.30.0, §9).
+    meta: {de, ts}                  # SÓ PC DA ESCOLA lê e grava (§4); MEMBRO não
+    pubs/{deviceId}: "<pub>"        # lê. meta = create-once, o PC que criou a
+    chaves/{deviceId}: {de, env}    # chave da frota; pubs = a meta/pub do próprio
+    redes/{id}: {env, ts}           # PC; chaves = a chave da frota selada para o
+                                    # PC por um PC que já a tem; redes = uma rede
+                                    # cifrada com a chave da frota (ts = servidor)
 
 /backup/{teacherUid}/               # backup p/ troca de celular (SÓ o app).
   keypair: "<blob PBKDF2+AES>"      # teacher_key.txt cifrado pelo PIN do prof
@@ -424,6 +431,21 @@ no índice público do canal (`…/celita-apt/dists/estavel/main/binary-amd64/Pa
 PC com Celita sem `meta/os` é de antes da 1.24.0 e conta como desatualizado.
 ```json
 { "v":1, "type":"atualizar", "id":"a54", "payload":{} }
+```
+
+**`energia`** (agente Celita do pacote 1.30.0; app ≥ 0.25.0) — desligar,
+reiniciar ou encerrar a sessão, **na hora e sem aviso ao aluno** (decisão do
+dono, 2026-10-17). `acao` = `desligar` | `reiniciar` | `encerrar`. O ack sai
+antes (o PC espera 3 s); depois o agente encerra as sessões de conta pelo
+logind (o PAM devolve a pasta do aluno), e em `desligar`/`reiniciar` espera a
+atualização em andamento terminar (trava `/run/lock/celita-update.lock`, até
+30 min) antes do `systemctl poweroff`/`reboot`. Pedido com `ts` mais velho
+que 2 min: `ack {ok:false, error:"expirado"}` — a fila guarda até 12 h, e um
+"desligar" atrasado não pode cair no meio de outra aula. `encerrar` sem
+ninguém logado: `sem_sessao`; ação desconhecida: `payload_invalido`. Só o
+agente do Celita atende (Chromebook responde `tipo_desconhecido`).
+```json
+{ "v":1, "type":"energia", "id":"a55", "payload":{ "acao":"desligar" } }
 ```
 
 **`enviar_midia`** / **`apagar_midia`** (agente Celita ≥ 0.14.0; app ≥ 0.22.0) —
@@ -792,6 +814,27 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - `/wallpapers/{tUid}` — escrita só do dono; leitura do dono ou de device cujo
   `bind/teacherUid == tUid` (resolvido via `/device_uids/{auth.uid}`).
 
+**Wi-Fi da escola `/school/wifi` — expressão PC DA ESCOLA** (a conta anônima
+aponta, em `/device_uids`, para um PC do roster da escola e é a dona do
+`meta/uid` dele; sem a segunda condição qualquer conta anônima se diria
+qualquer PC):
+
+```
+(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)
+```
+
+- `.read` (o nó inteiro, inclusive shallow) = PC DA ESCOLA. MEMBRO, fundador e
+  qualquer outra conta não leem.
+- `meta` — só criação (`!data.exists()`), por PC DA ESCOLA, com
+  `de` = o próprio deviceId; `{de, ts}` e nada mais; não se apaga.
+- `pubs/{deviceId}` — só o próprio PC, e só com o valor igual ao
+  `devices/{deviceId}/meta/pub`.
+- `chaves/{deviceId}` — PC DA ESCOLA grava para um PC do roster da escola,
+  com `de` = o próprio deviceId; `{de, env < 1024}` e nada mais.
+- `redes/{id}` — PC DA ESCOLA; `id` casa `^[A-Za-z0-9_-]{22}$`;
+  `{env < 16384, ts <= now}` e nada mais.
+- Qualquer outro filho de `school/wifi` é recusado.
+
 **Escola fechada — expressão MEMBRO** (inline em cada regra que antes usava
 `auth.token.email != null` como porteiro da escola):
 
@@ -897,6 +940,12 @@ rules e sobe os emuladores `database` e `storage`):
   baixa o objeto cifrado até ele expirar. Sem aviso visível no PC; a escola,
   como controladora, informa os responsáveis pelos próprios canais (LGPD
   art. 14).
+- **Wi-Fi da escola (§9):** senha de rede só circula cifrada com a chave da
+  frota, que só PC da escola tem (passa de PC para PC selada com X25519 entre
+  os dois). O Firebase, o fundador e os MEMBROS veem só envelopes e o número
+  de redes. Risco aceito: quem tem acesso de root a um PC da escola lê todas as
+  senhas (o NetworkManager as guarda no disco do PC, sem a frota já era
+  assim); um PC da escola comprometido pode apagar ou trocar redes para todos.
 - **Requisitos do console:** Auth anônima ON; rules publicadas. (Auth padrão
   não apaga contas anônimas; só com upgrade p/ Identity Platform existe
   "Automatic clean-up" — manter OFF nesse caso.)
@@ -944,6 +993,10 @@ gera).
   `/home/escola` e grava `/etc/celita/menu-fixados` (linha-marca
   `# controle-de-aula:`) só quando a lista muda; remove só arquivo com a
   marca. O "Fixar para todos" do menu grava o mesmo arquivo: vale o último.
+- **Wi-Fi da escola** (pacote 1.30.0): só PC vinculado à escola (o mesmo
+  critério do §7.1); detalhes no §9.
+- **Energia** (pacote 1.30.0): o comando `energia` (§3) desliga, reinicia ou
+  encerra a sessão; sem tela ou aviso no PC.
 
 ## 7. Arquivo da unidade (fotos e histórico — Celita OS)
 
@@ -1148,7 +1201,73 @@ servidor da escola ainda não foi atualizado para este recurso".
 2. APK 0.23.0. Sem as rules, o registro do token falha calado e o app segue
    notificando só com ele aberto; o PC não muda.
 
-## 9. Tipos reservados (futuro)
+### Wi-Fi da escola e energia (app 0.25.0, Celita 1.30.0)
+
+1. `database.rules.json` com `/school/wifi`
+   (`firebase deploy --only database` na pasta `firebase/` do app). Sem as
+   rules o agente recebe 401, recua 10 min e segue tentando; nada quebra.
+2. Pacote do Celita 1.30.0 e APK 0.25.0, em qualquer ordem: PC antigo
+   responde `tipo_desconhecido` ao `energia`, e o app diz que precisa
+   atualizar.
+
+## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
+
+Pedido do dono (2026-10-17): toda rede que uma unidade da escola conhece,
+todas conhecem — inclusive as salvas na conta de aluno. Só o agente do Celita
+participa, e só em PC vinculado à escola (§7.1); o app não lê nem grava aqui.
+
+**Chave da frota** — 32 bytes aleatórios, a mesma em todos os PCs da escola:
+
+1. O PC publica a própria pública em `pubs/{deviceId}` (a do `meta/pub`).
+2. Tem a chave guardada? Usa. Senão lê `chaves/{deviceId}` = `{de, env}`:
+   `env` = envelope (§3) com `{v:1, k:"<chave em base64url>"}` selado com
+   `HKDF-SHA256(X25519(priv do PC, pubs/{de}), salt="controle-de-aula",
+   info="wifi-frota-v1")`.
+3. Sem entrega e sem `meta`: o PC sorteia a chave, guarda em disco **antes** e
+   grava `meta = {de: deviceId, ts}` (create-once: se outro PC chegou primeiro,
+   as rules recusam e ele descarta a dele). Caiu entre as duas gravações? Ao
+   voltar, `meta.de` igual ao próprio id confirma a chave guardada.
+4. A cada 10 min, quem tem a chave sela para cada `pubs/{id}` que ainda não
+   tem `chaves/{id}` (até 50 por vez), com a derivação do passo 2 trocando os
+   papéis.
+
+Perdida em todos os PCs (nenhum guarda a chave): apagar `/school/wifi` no
+console; o próximo PC cria outra e as redes sobem de novo.
+
+**Uma rede** — `redes/{id}` = `{env, ts}`, `ts` do servidor, `env` = envelope
+selado com a chave da frota com `{v:1, id, dados, ok}` ou, para rede esquecida,
+`{v:1, id, apagada:true}`. `id` = os 22 primeiros caracteres do base64url de
+`SHA-256(ssid ‖ 0x00 ‖ classe)`, classe `aberta` (aberta, OWE), `senha`
+(WPA-PSK, SAE) ou `conta` (WPA-EAP). `ok` = hora (ms, relógio do servidor) da
+última conexão que deu certo naquele PC (`timestamps` do NetworkManager).
+
+```json
+{ "v":1, "ssid":"U0FMQSA4", "oculta":false, "seguranca":"wpa-psk", "psk":"…" }
+{ "v":1, "ssid":"ZWR1cm9hbQ", "oculta":true, "seguranca":"wpa-eap",
+  "eap":{ "metodos":["peap","ttls"], "identidade":"…", "senha":"…",
+          "fase2":"mschapv2", "anonima":"…", "dominio":"…" } }
+```
+
+Não viajam: WEP, rede com certificado (caminho de arquivo), EAP-TLS, senha
+guardada no chaveiro de uma conta (`*-flags` ≠ 0), hotspot e ad hoc. Ao gravar,
+o agente mexe só em rede e senha do perfil que a unidade já tem (IP,
+prioridade e endereço físico ficam) ou cria `celita-<id>.nmconnection`.
+
+**Quem vence** (a cada 5 min e a cada mudança nos perfis):
+
+- Só aqui: sobe. Só na escola: grava aqui.
+- Os dois iguais: nada.
+- Mudou só aqui: sobe **depois de conectar** (`ok` maior que o da escola, ou a
+  da escola nunca conectou) — senha errada numa unidade não derruba as outras.
+- Mudou só na escola: grava aqui.
+- Mudou dos dois lados: vence o `ok` maior; empate, o mais novo.
+- Sumiu daqui fora da conta de aluno (Configurações, só administrador): sobe
+  `apagada` e as outras unidades apagam o perfil. Na conta de aluno, volta.
+- `apagada` na escola: apaga aqui o perfil anterior à exclusão; salvo de novo
+  depois dela, sobe de novo para todas.
+- Perfil da mesma rede que não viaja: não conta como esquecido nem ganha cópia.
+
+## 10. Tipos reservados (futuro)
 `lock_screen`, `unlock_screen` e `focus_mode` foram aposentados: a trava é
 estado (`set_lock` em `state/lock`) e o modo prova também (`set_exam` em
 `state/exam`). Nenhum tipo reservado no momento.

@@ -229,6 +229,41 @@
           "$other": { ".validate": false }
         }
       },
+      "wifi": {
+        ".read": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)",
+        "meta": {
+          ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && !data.exists() && newData.child('de').val() === root.child('device_uids').child(auth.uid).val()",
+          ".validate": "newData.hasChildren(['de', 'ts'])",
+          "de": { ".validate": "newData.isString()" },
+          "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+          "$other": { ".validate": false }
+        },
+        "pubs": {
+          "$deviceId": {
+            ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && root.child('device_uids').child(auth.uid).val() === $deviceId",
+            ".validate": "newData.isString() && newData.val() === root.child('devices').child($deviceId).child('meta/pub').val()"
+          }
+        },
+        "chaves": {
+          "$deviceId": {
+            ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && root.child('school/devices').child($deviceId).val() === true",
+            ".validate": "newData.hasChildren(['de', 'env']) && newData.child('de').val() === root.child('device_uids').child(auth.uid).val()",
+            "de":  { ".validate": "newData.isString()" },
+            "env": { ".validate": "newData.isString() && newData.val().length < 1024" },
+            "$other": { ".validate": false }
+          }
+        },
+        "redes": {
+          "$id": {
+            ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)",
+            ".validate": "$id.matches(/^[A-Za-z0-9_-]{22}$/) && newData.hasChildren(['env', 'ts'])",
+            "env": { ".validate": "newData.isString() && newData.val().length < 16384" },
+            "ts":  { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "$other": { ".validate": false }
+          }
+        },
+        "$other": { ".validate": false }
+      },
       "$other": { ".validate": false }
     },
 
