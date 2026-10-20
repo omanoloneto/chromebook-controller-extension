@@ -73,7 +73,7 @@
         },
 
         "snapshot": {
-          ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
+          ".write": "auth != null && (data.parent().child('meta/uid').val() === auth.uid || (!newData.exists() && (data.parent().child('bind/teacherUid').val() === auth.uid || (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))))",
           "env": { ".validate": "newData.isString() && newData.val().length < 1048576" },
           "ts":  { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
@@ -139,6 +139,7 @@
             ".write": "auth != null && ((root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid && (root.child('school/meta/schoolUid').exists() && root.child('devices').child($deviceId).child('bind/teacherUid').val() === root.child('school/meta/schoolUid').val())) || (!newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))))",
             ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.hasChildren()",
             "$ts": {
+              ".write": "auth != null && !newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
               ".validate": "$ts.matches(/^[0-9]{13}$/) && newData.hasChildren(['u', 'r'])",
               "u": { ".validate": "newData.val() === auth.uid" },
               "r": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{22}$/)" },

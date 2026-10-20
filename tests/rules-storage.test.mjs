@@ -135,12 +135,18 @@ test('storage: listar é negado para todos', { skip }, async () => {
   }
 });
 
-test('storage: apagar só o dono', { skip }, async () => {
+test('storage: apagam o dono e o professor verificado; outro PC, sem verificação e anônimo, não', { skip }, async () => {
   const nome = foto('uid-dev1', '1790000000040');
   await permitido(enviar(nome, DEV1));
   await negado(apagar(nome, DEV2));
-  await negado(apagar(nome, PROF));
+  await negado(apagar(nome, PROF_NV));
+  await negado(apagar(nome, SEM_FLAG));
   await negado(apagar(nome, undefined));
-  await status(apagar(nome, DEV1), 204);
+  await status(apagar(nome, PROF), 204);
   await status(baixar(nome, PROF), 404);
+
+  const doDono = foto('uid-dev1', '1790000000041');
+  await permitido(enviar(doDono, DEV1));
+  await status(apagar(doDono, DEV1), 204);
+  await status(baixar(doDono, PROF), 404);
 });

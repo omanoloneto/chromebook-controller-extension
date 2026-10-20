@@ -7,7 +7,10 @@ service firebase.storage {
         && file.matches('^[0-9]{13}_[A-Za-z0-9_-]{22}[.]bin$')
         && request.resource.size < 400 * 1024;
       allow get: if request.auth != null && request.auth.token.get('email_verified', false) == true;
-      allow delete: if request.auth != null && request.auth.uid == deviceUid;
+      // O professor apaga uma foto pelo app: o caminho só sai do índice, que
+      // só a escola lê (o mesmo critério do get).
+      allow delete: if request.auth != null && (request.auth.uid == deviceUid
+        || request.auth.token.get('email_verified', false) == true);
     }
     // Partes cifradas (midia-v1) de uma foto ou vídeo da Câmera a caminho do
     // celular: o app apaga ao baixar, o PC apaga a sobra depois de um dia.

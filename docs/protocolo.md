@@ -65,7 +65,9 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # o professor apaga pedido/mão ao agir, nunca
                                     # chat; qualquer professor apaga > 12 h
   report: {env: "<envelope>", ts}   # último tab_report (sobrescreve); ts = serverTimestamp
-  snapshot: {env: "<envelope>", ts} # última foto da webcam (camera_snapshot; sobrescreve)
+  snapshot: {env: "<envelope>", ts} # última captura (camera_snapshot ou
+                                    # screen_snapshot; sobrescreve); o professor
+                                    # vinculado ou MEMBRO só apaga (Excluir no app)
   presence/ {lastSeen}              # heartbeat do PC a cada 25s (serverTimestamp)
 
 /device_uids/{uid}: deviceId        # índice reverso (escrito pela extensão);
@@ -800,6 +802,8 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   apenas **deletar** (consumir).
 - `report`, `ack`, `presence` — graváveis só pelo device (`meta/uid`); em `ack`
   o professor pode apenas deletar.
+- `snapshot` — gravável só pelo device; o professor vinculado ou MEMBRO pode
+  apenas apagar (o "Excluir" da captura no app; o PC não guarda cópia).
 - `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
   professor vinculado ou MEMBRO pode apenas apagar filhos.
 - `state` aceita também `lock`, `exam`, `monitor`.
@@ -874,7 +878,8 @@ ESCOLA = `school/meta/schoolUid` existe **e** `devices/{id}/bind/teacherUid`
 - `nav/{dia}/{k}` = `{env: string < 65536, ts: number}`, nada mais.
 - `fotos/{dia}/{ts13}` — `ts13` casa `^[0-9]{13}$`; `{u, r}` com
   `u === auth.uid` e `r` casando `^[A-Za-z0-9_-]{22}$`, e `l` opcional, só
-  `true`; nada mais.
+  `true`; nada mais. Apagar uma foto só = DONO ou MEMBRO (o "Excluir" do app
+  apaga o objeto no Storage e depois esta entrada).
 - Qualquer outro filho de `archive/{id}` é recusado.
 
 **Storage** — arquivo canônico `firebase/storage.rules` (espelhado nos dois
@@ -885,7 +890,8 @@ rules e sobe os emuladores `database` e `storage`):
   `deviceUid`, com `day` no formato acima, `file` casando
   `^[0-9]{13}_[A-Za-z0-9_-]{22}[.]bin$` e tamanho < 400 KiB (`update`
   existe para o reenvio após timeout ser inofensivo); `get` = qualquer conta
-  com `email_verified`; `delete` = só o próprio `deviceUid`.
+  com `email_verified`; `delete` = o próprio `deviceUid` ou conta com
+  `email_verified` (o "Excluir" do app; mesmo critério do `get`).
 - **Sem `list`** e todo o resto negado: o índice vive no RTDB atrás de
   MEMBRO e o nome leva 128 bits aleatórios (`r`), então só quem lê o índice
   monta o caminho.
@@ -935,9 +941,9 @@ rules e sobe os emuladores `database` e `storage`):
 - **Arquivo da unidade (§7):** fotos e histórico cifrados ponta a ponta com
   a chave de sessão do par PC↔escola; 15 dias; só Celita OS; só PC vinculado
   à escola. Metadados em claro aceitos: dias, `ts13` do índice, tamanhos dos
-  objetos. O `get` do Storage exige só e-mail verificado (as rules do Storage
-  não leem o RTDB): quem guardou caminhos do índice (ex.: ex-membro) ainda
-  baixa o objeto cifrado até ele expirar. Sem aviso visível no PC; a escola,
+  objetos. O `get` e o `delete` do Storage exigem só e-mail verificado (as
+  rules do Storage não leem o RTDB): quem guardou caminhos do índice (ex.:
+  ex-membro) ainda baixa ou apaga o objeto cifrado até ele expirar. Sem aviso visível no PC; a escola,
   como controladora, informa os responsáveis pelos próprios canais (LGPD
   art. 14).
 - **Wi-Fi da escola (§9):** senha de rede só circula cifrada com a chave da

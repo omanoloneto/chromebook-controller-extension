@@ -199,6 +199,25 @@ test('archive: membro só apaga (dia inteiro e PATCH multi-caminho com null)', {
   assert.equal(await valor('/archive/d1'), null);
 });
 
+test('archive: membro apaga uma foto só do índice; intruso, outro PC e anônimo não', { skip }, async () => {
+  await semear();
+  const OUTRA = '1790000000999';
+  await req('PUT', `/archive/d1/fotos/${DIA_VELHO}/${OUTRA}`, { admin: true, body: indice('uid-dev1') });
+  const uma = `/archive/d1/fotos/${DIA_VELHO}/${TS13}`;
+  await negado(req('DELETE', uma, { auth: INTRUSO }));
+  await negado(req('DELETE', uma, { auth: MEMBRO_NV }));
+  await negado(req('DELETE', uma, { auth: ANON }));
+  await negado(req('DELETE', uma, { auth: DEV2 }));
+  assert.notEqual(await valor(uma), null);
+
+  await permitido(req('DELETE', uma, { auth: MEMBRO }));
+  assert.equal(await valor(uma), null);
+  assert.notEqual(await valor(`/archive/d1/fotos/${DIA_VELHO}/${OUTRA}`), null, 'a outra foto do dia fica');
+  // A última do dia também sai sozinha (o dia fica vazio).
+  await permitido(req('DELETE', `/archive/d1/fotos/${DIA_VELHO}/${OUTRA}`, { auth: FUNDADOR }));
+  assert.equal(await valor(`/archive/d1/fotos/${DIA_VELHO}`), null);
+});
+
 test('archive: dono apaga dias velhos num PATCH multi-caminho (retenção)', { skip }, async () => {
   await semear();
   await permitido(req('POST', `/archive/d1/nav/${DIA}`, { auth: DEV1, body: lote() }));
