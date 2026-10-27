@@ -1404,7 +1404,9 @@ selado com a chave da frota com `{v:1, id, dados, ok}` ou, para rede esquecida,
 ```
 
 Não viajam: WEP, rede com certificado (caminho de arquivo), EAP-TLS, senha
-guardada no chaveiro de uma conta (`*-flags` ≠ 0), hotspot e ad hoc. Ao gravar,
+guardada no chaveiro de uma conta (`*-flags` ≠ 0), hotspot e ad hoc. A conexão
+automática é de cada unidade (Celita ≥ 1.31.0, chave "Conectar automaticamente"
+nas Redes salvas): não viaja e fica quando a escola regrava o perfil. Ao gravar,
 o agente mexe só em rede e senha do perfil que a unidade já tem (IP,
 prioridade e endereço físico ficam) ou cria `celita-<id>.nmconnection`.
 
@@ -1428,7 +1430,9 @@ prioridade e endereço físico ficam) ou cria `celita-<id>.nmconnection`.
   se o perfil continua aqui e uma semana se não chega à escola; versão salva em
   outra unidade depois dele vence, e a rede volta com ela. Sumiu de outro jeito
   (login que falhou, `nmcli`, conta de aluno): volta.
-- `apagada` na escola: apaga aqui o perfil anterior à exclusão; salvo de novo
+- `apagada` na escola: apaga aqui o perfil anterior à exclusão, e também o
+  regravado depois dela sem mudar o que viaja (a chave "Conectar
+  automaticamente", o NM completando o arquivo); salvo de novo com outra versão
   depois dela, sobe de novo para todas, depois de conectar ou logo se é aberta.
 - Perfil da mesma rede sem a senha para todas as contas (pedido de senha
   cancelado, chaveiro de uma conta): a da escola completa o mesmo perfil. Com
