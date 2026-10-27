@@ -131,8 +131,15 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # (relógio do servidor)
   aulas/{deviceId}: {uid, ts, env}  # trava "1 PC em 1 aula por vez"; env =
                                     # {professor, turma} cifrado; heartbeat
-                                    # renova ts; órfã >15min sofre takeover
-                                    # (validado nas rules)
+                                    # renova ts a cada 5 min com a aula
+                                    # aberta; órfã >15min sofre takeover
+                                    # (validado nas rules). Celular (app >=
+                                    # 0.30.0): renova também com o app
+                                    # fechado (serviço em primeiro plano),
+                                    # por transação que não recria nó
+                                    # apagado; com o app aberto ou fechado,
+                                    # deixa de renovar 6 h depois do início
+                                    # da aula
   wifi/                             # Wi-Fi da escola (Celita OS >= 1.30.0, §9).
     meta: {de, ts, kcv}             # SÓ PC DA ESCOLA lê tudo e grava meta, pubs,
     pubs/{deviceId}: "<pub>"        # chaves e redes; MEMBRO lê só meta, pubs,
@@ -760,19 +767,29 @@ Fila do aluno em `up/{pushId}` (POST; id do servidor). Texto em claro:
   site/60 s e ≤ 5 pendentes; mão 1/10 s. O professor mostra ≤ 20 pendentes por
   PC e silencia 10 min o PC que passar de 20 itens em 10 min.
 - Destinatário: sem escola, o professor vinculado; na escola, quem tem a
-  reserva viva do PC em `/school/aulas` (com notificação); PC livre aparece a
-  todo MEMBRO, sem notificação; PC reservado por outro é ignorado (nem lido,
-  nem apagado).
+  reserva viva do PC em `/school/aulas` (com notificação); PC sem reserva
+  viva (livre ou com a reserva vencida) aparece a todo MEMBRO e notifica só o
+  fundador, o dono do vínculo (`bind/teacherUid` = `schoolUid`; push: com a
+  função nova, em qualquer versão do app; ao vivo: app ≥ 0.30.0 — antes,
+  ninguém); PC reservado por outro é ignorado (nem lido, nem apagado), também
+  pelo fundador.
 - Apaga: pedido/mão — quem agir; chat — ninguém (o PC poda > 2 h e > 20);
   qualquer professor apaga > 12 h.
 - Push (app ≥ 0.23): a Cloud Function `avisarRecado` (`firebase/functions` do
   app) dispara a cada filho novo de `up/` e manda ao FCM, em alta prioridade e
   com validade de 2 h, `{t:"up", d: deviceId, k: pushId, e: envelope, p:
   meta/pub, l: meta/label}` para os tokens de `/fcm/{uid}` do mesmo
-  destinatário acima — só quem recebe notificação ao vivo. O envelope vai como
-  chegou (≤ 3200 chars; maior não vai) e só o celular o decifra; com o app
-  fechado ele mostra a mesma notificação (mesmo id) do caminho ao vivo. Vetor:
-  `test/fixtures/push-v1.json` do app.
+  destinatário acima — quem recebe notificação ao vivo; com o app < 0.30.0, o
+  fundador recebe o push do PC livre, mas o app aberto não toca. O envelope vai
+  como chegou (≤ 3200 chars; maior não vai) e só o celular o decifra; com o app
+  fechado ele mostra a mesma notificação do caminho ao vivo. Cada execução
+  registra no log só o motivo e a contagem de celulares (sem uid, token nem
+  texto). Vetor: `test/fixtures/push-v1.json` do app.
+- Toque (app ≥ 0.30.0): um card por PC e tipo de recado, que mostra o mais
+  novo. Toca no máximo uma vez a cada 2 min por PC e tipo, contados do último
+  toque, também entre o push e o caminho ao vivo; o mesmo recado pelos dois
+  caminhos toca uma vez só; card tirado da barra toca de novo no recado
+  seguinte.
 
 ### `thumb_snapshot` (PC → professor)
 
@@ -1273,6 +1290,30 @@ PC para PC. No console, conferir `meta/kcv` com 43 caracteres,
 `guardioes/{uid}/chave` depois que um PC 1.31 ligar e `entregas/{id}/{uid}`
 para cada PC de `pubs`. Se o PC de `meta.de` não voltar: o recomeço do §9, com
 as rules novas já publicadas.
+
+### Recados com o app fechado (app 0.30.0)
+
+1. Função `avisarRecado` nova (`firebase deploy --only functions` na pasta
+   `firebase/` do app). Vale para qualquer versão do app: o recado de PC sem
+   reserva viva passa a ir ao fundador (§3, `up`). O log da função diz o
+   motivo de cada execução: `sem_destinatario`, `sem_dados`, `sem_celular`
+   ou `enviado`, com a contagem de celulares. Até o APK novo, com o app velho
+   aberto na frente, esse recado não toca: o FCM o entrega ao app aberto, que
+   não o mostra.
+2. APK 0.30.0 (já inclui o 0.29.0). Abrir o app uma vez depois de instalar:
+   só daí em diante o serviço em primeiro plano sobe sozinho no boot e depois
+   de cada atualização, conta na notificação fixa os PCs ligados (§1,
+   Presença) e renova a reserva da aula aberta (§1, `aulas`), também com o
+   app fechado. No Samsung, a bateria do app em "Sem restrições" e o app em
+   "Apps nunca suspensos" (passo a passo no guia do professor); sem isso, as
+   listas de suspensão derrubam o serviço e podem segurar o push.
+
+As rules não mudam: o serviço só lê o roster (`school/devices` ou
+`teachers/{uid}/devices`), `devices/{id}/presence` e `school/aulas`, renova
+a própria reserva e regrava o próprio token em `/fcm/{uid}`, o que elas já
+permitem. Os PCs (extensão e agente do Celita) também não mudam. O app do
+professor no Celita segue a mesma regra do destinatário a partir do próximo
+pacote do Celita, em qualquer ordem.
 
 ## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
 
