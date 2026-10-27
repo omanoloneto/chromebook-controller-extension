@@ -8,7 +8,7 @@
         ".read": "auth != null && (data.child('meta/uid').val() === auth.uid || data.child('bind/teacherUid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
 
         "meta": {
-          ".write": "auth != null && ((!data.child('uid').exists() && newData.child('uid').val() === auth.uid) || data.child('uid').val() === auth.uid)",
+          ".write": "auth != null && ((!data.child('uid').exists() && newData.child('uid').val() === auth.uid && root.child('school/devices').child($deviceId).val() !== true) || data.child('uid').val() === auth.uid)",
           "uid":   { ".validate": "newData.isString()" },
           "pub":   { ".validate": "newData.isString() && newData.val().length <= 64" },
           "label": { ".validate": "newData.isString() && newData.val().length <= 40" },
@@ -233,13 +233,19 @@
       "wifi": {
         ".read": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)",
         "meta": {
+          ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
           ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && !data.exists() && newData.child('de').val() === root.child('device_uids').child(auth.uid).val()",
           ".validate": "newData.hasChildren(['de', 'ts'])",
           "de": { ".validate": "newData.isString()" },
           "ts": { ".validate": "newData.isNumber() && newData.val() <= now" },
+          "kcv": {
+            ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && !data.exists() && newData.exists() && data.parent().child('de').val() === root.child('device_uids').child(auth.uid).val()",
+            ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{43}$/)"
+          },
           "$other": { ".validate": false }
         },
         "pubs": {
+          ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
           "$deviceId": {
             ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid) && root.child('device_uids').child(auth.uid).val() === $deviceId",
             ".validate": "newData.isString() && newData.val() === root.child('devices').child($deviceId).child('meta/pub').val()"
@@ -252,6 +258,36 @@
             "de":  { ".validate": "newData.isString()" },
             "env": { ".validate": "newData.isString() && newData.val().length < 1024" },
             "$other": { ".validate": false }
+          }
+        },
+        "guardioes": {
+          "$uid": {
+            ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) && auth.uid === $uid",
+            ".write": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) && auth.uid === $uid && !newData.child('chave').exists()",
+            ".validate": "newData.hasChildren(['pub', 'ts'])",
+            "pub": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{43}$/)" },
+            "ts":  { ".validate": "newData.isNumber() && newData.val() <= now" },
+            "chave": {
+              ".write": "(auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)",
+              ".validate": "newData.hasChildren(['de', 'env']) && newData.child('de').val() === root.child('device_uids').child(auth.uid).val()",
+              "de":  { ".validate": "newData.isString()" },
+              "env": { ".validate": "newData.isString() && newData.val().length < 1024" },
+              "$other": { ".validate": false }
+            },
+            "$other": { ".validate": false }
+          }
+        },
+        "entregas": {
+          ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
+          "$deviceId": {
+            "$uid": {
+              ".write": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) && auth.uid === $uid && root.child('school/devices').child($deviceId).val() === true && root.child('school/wifi/pubs').child($deviceId).isString()",
+              ".validate": "newData.hasChildren(['pub', 'env', 'kcv'])",
+              "pub": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{43}$/)" },
+              "env": { ".validate": "newData.isString() && newData.val().length < 1024" },
+              "kcv": { ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{43}$/)" },
+              "$other": { ".validate": false }
+            }
           }
         },
         "redes": {

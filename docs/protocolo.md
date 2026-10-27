@@ -134,11 +134,17 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # renova ts; órfã >15min sofre takeover
                                     # (validado nas rules)
   wifi/                             # Wi-Fi da escola (Celita OS >= 1.30.0, §9).
-    meta: {de, ts}                  # SÓ PC DA ESCOLA lê e grava (§4); MEMBRO não
-    pubs/{deviceId}: "<pub>"        # lê. meta = create-once, o PC que criou a
-    chaves/{deviceId}: {de, env}    # chave da frota; pubs = a meta/pub do próprio
-    redes/{id}: {env, ts}           # PC; chaves = a chave da frota selada para o
-                                    # PC por um PC que já a tem; redes = uma rede
+    meta: {de, ts, kcv}             # SÓ PC DA ESCOLA lê tudo e grava meta, pubs,
+    pubs/{deviceId}: "<pub>"        # chaves e redes; MEMBRO lê só meta, pubs,
+    chaves/{deviceId}: {de, env}    # entregas e o próprio guardioes/{uid} (§4).
+    guardioes/{uid}: {pub, ts}      # meta = create-once, o PC que criou a chave
+      chave: {de, env}              # da frota; kcv = HMAC dela (Celita >= 1.31.0);
+    entregas/{deviceId}/{uid}:      # pubs = a meta/pub do próprio PC; chaves = a
+      {pub, env, kcv}               # chave da frota selada para o PC por um PC que
+    redes/{id}: {env, ts}           # já a tem; guardioes = a pública do celular de
+                                    # um professor (app >= 0.29.0) e a chave selada
+                                    # para ele por um PC; entregas = a chave selada
+                                    # por esse celular para um PC; redes = uma rede
                                     # cifrada com a chave da frota (ts = servidor)
 
 /backup/{teacherUid}/               # backup p/ troca de celular (SÓ o app).
@@ -794,6 +800,10 @@ imagem; o `type` diz se é a webcam ou a tela.
 Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 
 - `meta` — gravável pelo device; `meta/uid` é **first-write-wins** (fixa o uid).
+  A primeira gravação é recusada para id que já está em `/school/devices`: o
+  pareamento cria a `meta` antes do roster, e entrada velha no roster não vira
+  PC da escola de outra conta. No console, apagar `/devices/{id}` junto com a
+  entrada dele em `/school/devices`.
 - `pairing` — gravável só pelo device; **ninguém lê** (as rules leem por dentro).
 - `bind` — criação/atualização só com `token == pairing/token` atual **e** (vazio
   OU mesmo `teacherUid`) → TOFU no servidor. Delete: device, professor vinculado
@@ -827,14 +837,30 @@ qualquer PC):
 (auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)
 ```
 
-- `.read` (o nó inteiro, inclusive shallow) = PC DA ESCOLA. MEMBRO, fundador e
-  qualquer outra conta não leem.
+- `.read` (o nó inteiro, inclusive shallow) = PC DA ESCOLA. MEMBRO (expressão
+  abaixo, inclusive o fundador) lê só `meta`, `pubs`, `entregas` e o próprio
+  `guardioes/{uid}`: nunca `redes`, `chaves`, o nó inteiro nem o de outro
+  guardião. Qualquer outra conta não lê.
 - `meta` — só criação (`!data.exists()`), por PC DA ESCOLA, com
-  `de` = o próprio deviceId; `{de, ts}` e nada mais; não se apaga.
+  `de` = o próprio deviceId; `{de, ts, kcv?}` e nada mais; não se apaga.
+- `meta/kcv` — casa `^[A-Za-z0-9_-]{43}$`; nasce junto com a `meta` ou, na
+  `meta` antiga sem ele, é gravado uma vez só pelo PC de `meta.de`; depois não
+  se troca nem se apaga.
 - `pubs/{deviceId}` — só o próprio PC, e só com o valor igual ao
   `devices/{deviceId}/meta/pub`.
 - `chaves/{deviceId}` — PC DA ESCOLA grava para um PC do roster da escola,
   com `de` = o próprio deviceId; `{de, env < 1024}` e nada mais.
+- `guardioes/{uid}` — só o próprio MEMBRO (`auth.uid === uid`) grava, e só
+  `{pub, ts}`: `pub` casa `^[A-Za-z0-9_-]{43}$`, `ts <= now`. O resultado da
+  gravação nunca tem `chave`: o set do nó inteiro apaga a selada antiga, e o
+  dono pode apagar só ela.
+- `guardioes/{uid}/chave` — só PC DA ESCOLA, com `de` = o próprio deviceId;
+  `{de, env < 1024}` e nada mais; só para guardião já cadastrado (`pub` e
+  `ts`).
+- `entregas/{deviceId}/{uid}` — só o próprio MEMBRO, na própria vaga
+  (`auth.uid === uid`), e só para PC do roster da escola que publicou
+  `pubs/{deviceId}`; `{pub, env < 1024, kcv}` e nada mais, `pub` e `kcv`
+  casando `^[A-Za-z0-9_-]{43}$`.
 - `redes/{id}` — PC DA ESCOLA; `id` casa `^[A-Za-z0-9_-]{22}$`;
   `{env < 16384, ts <= now}` e nada mais.
 - Qualquer outro filho de `school/wifi` é recusado.
@@ -947,11 +973,24 @@ rules e sobe os emuladores `database` e `storage`):
   como controladora, informa os responsáveis pelos próprios canais (LGPD
   art. 14).
 - **Wi-Fi da escola (§9):** senha de rede só circula cifrada com a chave da
-  frota, que só PC da escola tem (passa de PC para PC selada com X25519 entre
-  os dois). O Firebase, o fundador e os MEMBROS veem só envelopes e o número
-  de redes. Risco aceito: quem tem acesso de root a um PC da escola lê todas as
-  senhas (o NetworkManager as guarda no disco do PC, sem a frota já era
-  assim); um PC da escola comprometido pode apagar ou trocar redes para todos.
+  frota, que só PC da escola e celular guardião têm (passa selada com X25519
+  entre as duas pontas). O Firebase guarda só envelopes, e o console mostra só
+  eles e o número de redes; MEMBRO, inclusive o fundador, não lê `redes` nem
+  `chaves`. O celular guardião vê a chave da frota, mas não lê `redes` e só a
+  guarda na memória do app. O `kcv` público em `meta` barra chave falsa: PC e
+  celular só aceitam a chave cujo HMAC bate com ele, e ele nasce uma vez só,
+  pelo PC que criou a chave — com ele, quem grava em `chaves` ou `entregas` não
+  planta outra chave. Riscos aceitos: quem tem acesso de root a um PC da escola
+  lê todas as senhas (o NetworkManager as guarda no disco do PC, sem a frota já
+  era assim); um PC da escola comprometido pode apagar ou trocar redes para
+  todos; qualquer PC da escola pode apagar ou trocar a chave selada para um
+  guardião (só atrasa: o celular confere o `kcv`, apaga a que não bate e um PC
+  sela de novo); e um MEMBRO pode se fazer de PC da escola com qualquer conta,
+  até a do próprio professor: o `/devices/{id}/meta` e o `/device_uids` dela, e
+  a entrada em `/school/devices`, que todo MEMBRO grava. Esse PC recebe a chave
+  como qualquer outro (de PC ou de guardião) e lê todas as senhas; as rules não
+  o distinguem de um PC de verdade, e a defesa é liberar em `/school/members`
+  só professor de confiança.
 - **Requisitos do console:** Auth anônima ON; rules publicadas. (Auth padrão
   não apaga contas anônimas; só com upgrade p/ Identity Platform existe
   "Automatic clean-up" — manter OFF nesse caso.)
@@ -1216,36 +1255,105 @@ servidor da escola ainda não foi atualizado para este recurso".
    responde `tipo_desconhecido` ao `energia`, e o app diz que precisa
    atualizar.
 
+### Wi-Fi sem outro PC ligado (app 0.29.0, Celita 1.31.0)
+
+1. `database.rules.json` com `meta/kcv`, `guardioes` e `entregas` em
+   `/school/wifi` (superconjunto), publicado pelo usuário no console.
+2. Pacote do Celita 1.31.0, com prioridade para o PC de `meta.de` (hoje, a
+   Unidade 28: só ele grava o `kcv` da meta antiga) e para as unidades ainda
+   no 1.28.
+3. APK 0.29.0 para os professores.
+
+Com a `meta` já criada (a de hoje, da Unidade 28), a ordem não importa: sem as
+rules, o agente só registra aviso e o guardião para calado. Sem `meta` (escola
+nova, ou o recomeço do §9), as rules vêm antes: as antigas recusam a `meta` com
+`kcv` (401), e o PC 1.31.0 descarta a chave que sorteou e tenta de novo a cada
+1 min, sem nunca criá-la. Sem `kcv`, os celulares esperam e a chave segue só de
+PC para PC. No console, conferir `meta/kcv` com 43 caracteres,
+`guardioes/{uid}/chave` depois que um PC 1.31 ligar e `entregas/{id}/{uid}`
+para cada PC de `pubs`. Se o PC de `meta.de` não voltar: o recomeço do §9, com
+as rules novas já publicadas.
+
 ## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
 
 Pedido do dono (2026-10-17): toda rede que uma unidade da escola conhece,
 todas conhecem — inclusive as salvas na conta de aluno. Só o agente do Celita
-participa, e só em PC vinculado à escola (§7.1); o app não lê nem grava aqui.
+lê e grava redes, e só em PC vinculado à escola (§7.1); o app só entra como
+guardião da chave da frota (abaixo), sem ler redes.
 
-**Chave da frota** — 32 bytes aleatórios, a mesma em todos os PCs da escola:
+**Chave da frota** — 32 bytes aleatórios, a mesma em todos os PCs da escola.
+`meta = {de, ts, kcv}`: `kcv` (Celita ≥ 1.31.0) = `HMAC-SHA256(chave,
+"wifi-frota-kcv-v1")` em base64url sem `=` (43 caracteres) diz qual é a chave
+sem revelá-la, e é comparado com `==` (é público). Toda chave selada (PC→PC,
+PC→celular, celular→PC) é o envelope (§3) com `{v:1, k:"<chave em
+base64url>"}`, selado com `HKDF-SHA256(X25519(priv, pública do outro lado),
+salt="controle-de-aula", info="wifi-frota-v1")`.
 
 1. O PC publica a própria pública em `pubs/{deviceId}` (a do `meta/pub`).
-2. Tem a chave guardada? Usa. Senão lê `chaves/{deviceId}` = `{de, env}`:
-   `env` = envelope (§3) com `{v:1, k:"<chave em base64url>"}` selado com
-   `HKDF-SHA256(X25519(priv do PC, pubs/{de}), salt="controle-de-aula",
-   info="wifi-frota-v1")`.
-3. Sem entrega e sem `meta`: o PC sorteia a chave, guarda em disco **antes** e
-   grava `meta = {de: deviceId, ts}` (create-once: se outro PC chegou primeiro,
-   as rules recusam e ele descarta a dele). Caiu entre as duas gravações? Ao
-   voltar, `meta.de` igual ao próprio id confirma a chave guardada.
-4. A cada 10 min, quem tem a chave sela para cada `pubs/{id}` que ainda não
-   tem `chaves/{id}` (até 50 por vez), com a derivação do passo 2 trocando os
-   papéis.
+2. Tem a chave guardada? Confere com a `meta`: sem `meta` (o console apagou
+   `/school/wifi`) ou com `kcv` diferente, descarta a chave e recomeça. `meta`
+   sem `kcv` (de antes da 1.31.0): o PC de `meta.de` grava `meta/kcv` uma vez;
+   os outros seguem com a chave.
+3. Sem chave, procura a entrega: de outro PC em `chaves/{deviceId}` =
+   `{de, env}`, aberta com `pubs/{de}`, ou do celular de um professor em
+   `entregas/{deviceId}/{uid}` = `{pub, env, kcv}`, com `pub` = pública de um
+   par efêmero só daquela entrega e `kcv` = o da chave que vai dentro (o PC não
+   confia nele: confere a chave aberta com o da `meta`). Com `kcv`, vale só a
+   chave que bate com ele (a
+   de PC errada é apagada, para um PC certo entregar de novo); sem `kcv`, só a
+   de PC. Sem chave, o PC pergunta de novo a cada 1 min, também quando as
+   rules o negam (PC recém-pareado antes de entrar no roster); com a chave,
+   negado recua 10 min.
+4. Sem entrega e sem `meta`: o PC sorteia a chave, guarda em disco **antes** e
+   grava `meta = {de: deviceId, ts, kcv}` (create-once: se outro PC chegou
+   primeiro, as rules recusam e ele descarta a dele). Caiu entre as duas
+   gravações? Ao voltar, `meta.de` igual ao próprio id confirma a chave
+   guardada.
+5. A cada sincronização (5 min e a cada mudança nos perfis), quem tem a chave
+   sela para cada `pubs/{id}` que ainda não tem `chaves/{id}` e para cada
+   `guardioes/{uid}` que ainda não tem `chave` (até 50 por vez, somando os
+   dois), com a pública do destino. Destino recusado (PC que saiu da escola)
+   não para os outros.
 
-Perdida em todos os PCs (nenhum guarda a chave): apagar `/school/wifi` no
-console; o próximo PC cria outra e as redes sobem de novo.
+**Guardiões** (app ≥ 0.29.0) — o celular de cada professor da escola (MEMBRO,
+inclusive o fundador), com o app aberto, entrega a chave a PC novo mesmo sem
+outro PC ligado:
+
+- O par X25519 é só do celular (`wifi_guardiao.txt`): fica fora do backup do
+  Android e do `/backup`, e nunca vira a chave da escola nem vai no login por
+  QR. O app grava `guardioes/{uid} = {pub, ts}` com set no nó inteiro (celular
+  trocado = pública nova, e a selada antiga sai junto); um PC sela a chave em
+  `guardioes/{uid}/chave = {de, env}` no passo 5. A vaga é uma por conta: com
+  a mesma conta em dois aparelhos (celular e tablet, ou o antigo ainda aberto),
+  fica com ela o último que abriu, e o outro para até o app abrir de novo.
+- Com `kcv`, o app abre a selada com `pubs/{de}` e confere o `kcv`; se não
+  abre ou não bate, apaga `guardioes/{uid}/chave` e um PC sela de novo. Sem
+  `kcv`, espera.
+- Para cada PC do roster que publicou `pubs/{id}` e ainda não tem a entrega
+  dele com o `kcv` atual, grava `entregas/{id}/{uid}` (par efêmero novo a cada
+  entrega; a vaga de outra chave é regravada), uns 2 s depois da última
+  mudança; o PC a recebe no passo 3.
+- A chave da frota só existe na memória do app: zera quando o `kcv` ou o
+  próprio nó mudam e quando o guardião para (saída da escola, acesso negado).
+  O guardião nunca lê `redes` nem `chaves`, e para calado se as rules negam.
+
+**Recomeço** — chave perdida em todos os PCs (nenhum a guarda), ou PC de
+`meta.de` fora de vez antes de gravar o `kcv`: apagar `/school/wifi` no
+console, só com as rules novas publicadas (as antigas recusam a `meta` com
+`kcv`, §8) e com as outras unidades no 1.31.0 ou desligadas: um PC < 1.31.0
+ligado não confere o `kcv` e regrava as redes com a chave antiga, e aí as
+redes alternam, PC novo pode ficar sem elas e um "Esquecer" se perde. Os PCs
+≥ 1.31.0 descartam a chave e publicam a pública de novo; o primeiro cria chave
+e `kcv`, os outros recebem, os celulares se cadastram sozinhos e as redes
+sobem de novo, inclusive as que a unidade recebeu da escola e não conectou.
 
 **Uma rede** — `redes/{id}` = `{env, ts}`, `ts` do servidor, `env` = envelope
 selado com a chave da frota com `{v:1, id, dados, ok}` ou, para rede esquecida,
 `{v:1, id, apagada:true}`. `id` = os 22 primeiros caracteres do base64url de
 `SHA-256(ssid ‖ 0x00 ‖ classe)`, classe `aberta` (aberta, OWE), `senha`
 (WPA-PSK, SAE) ou `conta` (WPA-EAP). `ok` = hora (ms, relógio do servidor) da
-última conexão que deu certo naquele PC (`timestamps` do NetworkManager).
+última conexão que deu certo naquele PC depois da última gravação do perfil
+(`timestamps` do NetworkManager; 0 se não conectou desde então).
 
 ```json
 { "v":1, "ssid":"U0FMQSA4", "oculta":false, "seguranca":"wpa-psk", "psk":"…" }
@@ -1261,17 +1369,32 @@ prioridade e endereço físico ficam) ou cria `celita-<id>.nmconnection`.
 
 **Quem vence** (a cada 5 min e a cada mudança nos perfis):
 
-- Só aqui: sobe. Só na escola: grava aqui.
-- Os dois iguais: nada.
+- Só aqui: sobe **depois de conectar**, ou logo se é aberta. Só na escola:
+  grava aqui.
+- Os dois iguais: nada. Se a da escola nunca conectou (subiu de quem só a
+  recebeu, no recomeço) e esta já, sobe com o `ok` daqui.
 - Mudou só aqui: sobe **depois de conectar** (`ok` maior que o da escola, ou a
   da escola nunca conectou) — senha errada numa unidade não derruba as outras.
+  Não conectou em 30 min e a da escola já conectou: volta a da escola.
 - Mudou só na escola: grava aqui.
 - Mudou dos dois lados: vence o `ok` maior; empate, o mais novo.
-- Sumiu daqui fora da conta de aluno (Configurações, só administrador): sobe
-  `apagada` e as outras unidades apagam o perfil. Na conta de aluno, volta.
+- Esquecida no "Esquecer" da Central de Configurações, que avisa o agente
+  antes de apagar o perfil (em todo PC da escola, também sem internet ou antes
+  de a chave chegar): quando aquele perfil some daqui, sobe `apagada` e as
+  outras unidades apagam o perfil, mesmo que sobre aqui outro perfil da mesma
+  rede sem a senha para todas as contas ou com certificado (esse não é
+  completado); outro perfil completo dela mantém a rede. O pedido vale 10 min
+  se o perfil continua aqui e uma semana se não chega à escola; versão salva em
+  outra unidade depois dele vence, e a rede volta com ela. Sumiu de outro jeito
+  (login que falhou, `nmcli`, conta de aluno): volta.
 - `apagada` na escola: apaga aqui o perfil anterior à exclusão; salvo de novo
-  depois dela, sobe de novo para todas.
-- Perfil da mesma rede que não viaja: não conta como esquecido nem ganha cópia.
+  depois dela, sobe de novo para todas, depois de conectar ou logo se é aberta.
+- Perfil da mesma rede sem a senha para todas as contas (pedido de senha
+  cancelado, chaveiro de uma conta): a da escola completa o mesmo perfil. Com
+  certificado desta unidade: não conta como esquecido nem ganha cópia.
+- Rede da escola que esta versão não lê (formato novo) fica como está. Com
+  `kcv`, a que não abre com a chave (de antes do recomeço) vale como ausente e
+  é regravada por quem tem a rede; sem `kcv`, fica como está.
 
 ## 10. Tipos reservados (futuro)
 `lock_screen`, `unlock_screen` e `focus_mode` foram aposentados: a trava é
