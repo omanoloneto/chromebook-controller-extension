@@ -45,6 +45,7 @@ import { provaAtiva, motivoProva } from '../lib/prova.js';
 // os sites na virada de sessão; a conta @escolacelita re-injeta sozinha).
 import './session-wipe.js';
 import { Native } from './native.js';
+import { NavDiag } from './diagnostico-nav.js';
 
 const OFFSCREEN_URL = 'offscreen/offscreen.html';
 const KEEPALIVE_ALARM = 'keepalive';
@@ -74,6 +75,8 @@ gravarVersao(); // todo (re)start do SW — cobre wake sem onStartup (pós-efêm
 // No Celita a conexão vive num agente do sistema; aqui só executamos abas.
 // Sem host nativo (Chromebook), tudo abaixo segue no modo offscreen.
 
+const navDiag = new NavDiag({ enviar: (itens) => native.enviar({ t: 'nav', itens }) });
+
 const native = new Native({
   onExec: (cmd, payload) => executarNativo(cmd, payload),
   onRules: (p) => execAplicarRegras(p),
@@ -83,6 +86,7 @@ const native = new Native({
     lastMotivo = e.motivo ?? null;
     updateBadge(e.state);
   },
+  onDiag: (ativo) => navDiag.ligar(ativo),
   montarRelatorio: () => montarRelatorio(),
 });
 native.conectar();
@@ -566,6 +570,7 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 chrome.tabs.onRemoved.addListener((tabId) => {
   native.agendarRelatorio();
   esquecerBloqueio(tabId);
+  navDiag.esquecer(tabId);
 });
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
@@ -575,6 +580,13 @@ chrome.tabs.onActivated.addListener(({ tabId }) => {
     .then((tab) => registrarEventoNav(tab))
     .catch(() => {});
 });
+
+// Diagnóstico do Celita: desligado até o agente pedir, então no Chromebook só
+// passa reto. O `?.` deixa o worker subir onde a API não existe.
+chrome.webNavigation?.onBeforeNavigate.addListener((d) => navDiag.inicio(d));
+chrome.webNavigation?.onCommitted.addListener((d) => navDiag.commit(d));
+chrome.webNavigation?.onCompleted.addListener((d) => navDiag.fim(d));
+chrome.webNavigation?.onErrorOccurred.addListener((d) => navDiag.erro(d));
 
 async function montarRelatorio() {
   const [todas, [ativa]] = await Promise.all([

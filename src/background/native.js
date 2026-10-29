@@ -12,12 +12,13 @@ const UP_TIMEOUT_MS = 10000; // pedirUp: sem up-result do agente = ponte_sem_res
 
 export class Native {
   /// `onExec(cmd, payload) -> Promise<{ok, error}>`; `onRules({rev, rules, filtros?, prova?})`;
-  /// `onClassView(snapshot|null)`; `onState({state, detail, teacher})`.
-  constructor({ onExec, onRules, onClassView, onState, montarRelatorio }) {
+  /// `onClassView(snapshot|null)`; `onState({state, detail, teacher})`; `onDiag(ativo)`.
+  constructor({ onExec, onRules, onClassView, onState, onDiag, montarRelatorio }) {
     this.onExec = onExec;
     this.onRules = onRules;
     this.onClassView = onClassView;
     this.onState = onState;
+    this.onDiag = onDiag;
     this.montarRelatorio = montarRelatorio;
     this.port = null;
     this.indisponivel = false; // host não instalado: modo offscreen
@@ -46,6 +47,9 @@ export class Native {
       const erro = chrome.runtime.lastError?.message ?? '';
       this.port = null;
       this._encerrarUps('ponte_caiu');
+      // Diagnóstico vale só nesta conexão; se a sessão continuar, o agente
+      // manda diag de novo na próxima.
+      this.onDiag?.(false);
       // "Specified native messaging host not found" / "forbidden": não é
       // Celita — desliga o modo nativo até o próximo start do service worker.
       if (/not found|forbidden|not registered/i.test(erro)) {
@@ -151,6 +155,9 @@ export class Native {
       }
       case 'classview':
         this.onClassView?.(msg.snapshot ?? null);
+        return;
+      case 'diag':
+        this.onDiag?.(msg.ativo === true);
         return;
       case 'exec': {
         let res;

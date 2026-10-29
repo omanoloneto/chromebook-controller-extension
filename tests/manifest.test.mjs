@@ -34,10 +34,12 @@ test('host_permissions = as 4 entradas do Firebase (iguais às da 0.6.0)', () =>
   if (base) assert.deepEqual(atual.host_permissions, base.host_permissions);
 });
 
-test('optional_host_permissions = ["<all_urls>"] e nenhuma permissão obrigatória nova', () => {
+// webNavigation (0.8.0, diagnóstico do Celita) tem o mesmo aviso de "tabs"
+// (ler o histórico de navegação): a atualização não pede reaprovação.
+test('optional_host_permissions = ["<all_urls>"] e nenhuma permissão obrigatória com aviso novo', () => {
   assert.deepEqual(atual.optional_host_permissions, ['<all_urls>']);
   assert.deepEqual(
     [...atual.permissions].sort(),
-    ['alarms', 'browsingData', 'nativeMessaging', 'notifications', 'offscreen', 'storage', 'tabs', 'wallpaper'],
+    ['alarms', 'browsingData', 'nativeMessaging', 'notifications', 'offscreen', 'storage', 'tabs', 'wallpaper', 'webNavigation'],
   );
 });
