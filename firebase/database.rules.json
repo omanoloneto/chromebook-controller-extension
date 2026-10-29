@@ -361,6 +361,16 @@
       }
     },
 
+    "diag": {
+      "$deviceId": {
+        ".write": "auth != null && root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid",
+        "$sessao": {
+          ".validate": "$sessao.matches(/^[0-9]{13}$/)",
+          "$registro": { ".validate": "newData.isString() && newData.val().length < 65536" }
+        }
+      }
+    },
+
     "wallpapers": {
       "$tUid": {
         ".write": "auth != null && (auth.uid === $tUid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",

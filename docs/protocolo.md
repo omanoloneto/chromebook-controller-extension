@@ -182,6 +182,11 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # grava, professor/MEMBRO lê e só apaga. Fora de
                                     # /devices/{id} de propósito (streams do nó inteiro)
 
+/diag/{deviceId}/{sessão}/{pushId}  # diagnóstico de Wi-Fi e da tampa (SÓ Celita OS,
+                                    # comando `diagnostico`): texto JSON em claro,
+                                    # gravado só pelo device; nenhum cliente lê
+                                    # (console / `firebase database:get`)
+
 /archive/{deviceId}/                # arquivo de 15 dias da unidade (SÓ Celita OS,
   nav/{dia}/{pushId}: {env, ts}     # SÓ PC vinculado à escola — §7). Gravado pelo
                                     # agente; lido pelo app. nav = lotes nav-v1
@@ -461,6 +466,27 @@ ninguém logado: `sem_sessao`; ação desconhecida: `payload_invalido`. Só o
 agente do Celita atende (Chromebook responde `tipo_desconhecido`).
 ```json
 { "v":1, "type":"energia", "id":"a55", "payload":{ "acao":"desligar" } }
+```
+
+**`diagnostico`** (agente Celita do pacote 1.31.1; app ≥ 0.31.0) — o PC grava
+um diagnóstico de Wi-Fi e da tampa por `horas` (número de 0 a 12; `0` para),
+contado no relógio do PC e valendo entre reinícios. Pedido com a gravação
+ligada só muda o prazo. A cada minuto, um registro `minuto` com o Wi-Fi em uso
+(`nmcli`: estado, conectividade, conexão, IP), até 15 redes à volta (SSID,
+BSSID, canal, sinal, segurança), a tampa, a bateria e o diário desde o
+registro anterior (o primeiro traz os 30 min de antes do pedido):
+NetworkManager, wpa_supplicant, celita-rede-forte, celita-tampa, logind, a
+suspensão, o kernel e o PID 1 só no que é tampa, sono, desligamento e Wi-Fi, e
+do agente só o Wi-Fi da escola. A cada boot (e no início), um registro `boot`
+com a versão, o firmware, a tampa, os últimos boots e o fim do anterior
+(`limpo` ou `abrupto`, com as últimas linhas). No fim, `fim` (`motivo` =
+`prazo` ou `app`). Cada registro é um texto JSON (< 65536) em
+`/diag/{deviceId}/{sessão}`, sessão = início em ms; linha que fala de senha ou
+chave nunca sai. Sem internet, até 240 registros esperam no PC e sobem em
+ordem quando a rede volta. `horas` fora da faixa: `payload_invalido`. Só o
+agente do Celita atende.
+```json
+{ "v":1, "type":"diagnostico", "id":"a56", "payload":{ "horas":6 } }
 ```
 
 **`enviar_midia`** / **`apagar_midia`** (agente Celita ≥ 0.14.0; app ≥ 0.22.0) —
@@ -838,6 +864,8 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   é `{t: string 1..4095, ts: number}`, nada mais.
 - `/thumbs/{id}` — `.read` = device, professor vinculado ou MEMBRO; o device
   grava `{env < 262144, ts}` e nada mais; professor/MEMBRO só apaga.
+- `/diag/{id}` — só o device grava (`meta/uid`), e ninguém lê pelo cliente;
+  `{sessão}` = `^[0-9]{13}$`, cada registro texto < 65536.
 - `/home/menu` — leitura pública; escrita MEMBRO; `rev` obrigatório; `ids/$i`
   com `$i` 0..23 e valor `^[A-Za-z0-9._-]+[.]desktop$` (≤ 64).
 - `school/stores/{k}` aceita também `prova`.
@@ -1314,6 +1342,14 @@ a própria reserva e regrava o próprio token em `/fcm/{uid}`, o que elas já
 permitem. Os PCs (extensão e agente do Celita) também não mudam. O app do
 professor no Celita segue a mesma regra do destinatário a partir do próximo
 pacote do Celita, em qualquer ordem.
+
+### Diagnóstico de Wi-Fi e da tampa (app 0.31.0, Celita 1.31.1)
+
+1. Rules com `/diag` (deploy).
+2. Celita 1.31.1 (agente com o `diagnostico`); o PC escolhido pega pelo
+   "Atualizar o Celita OS agora".
+3. APK 0.31.0: no ⋮ do PC, "Gravar diagnóstico". PC sem o agente novo
+   responde `tipo_desconhecido` ("versão antiga — atualize-o").
 
 ## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
 

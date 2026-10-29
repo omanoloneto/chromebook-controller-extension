@@ -204,6 +204,28 @@ test('state: só o professor vinculado; chaves limitadas', { skip }, async () =>
   await negado(req('PUT', '/devices/d1/state/outra', { auth: PROF, body: 'x' }));
 });
 
+test('diag: só o próprio PC grava; nenhum cliente lê', { skip }, async () => {
+  await semear({ comBind: true });
+  const OUTRO = fakeToken('uid-outro');
+  await req('PUT', '/devices/d2/meta', { admin: true, body: { uid: 'uid-outro', pub: 'P2', label: 'PC 2', v: 4 } });
+  const registro = JSON.stringify({ tipo: 'minuto', t: 1790000000000 });
+  await permitido(req('POST', '/diag/d1/1790000000000', { auth: DEV, body: registro }));
+  await negado(req('POST', '/diag/d1/1790000000000', { auth: OUTRO, body: registro }));
+  await negado(req('POST', '/diag/d1/1790000000000', { auth: PROF, body: registro }));
+  await negado(req('POST', '/diag/d1/1790000000000', { body: registro }));
+  // Só texto, com teto, e a sessão é o instante em ms.
+  await negado(req('POST', '/diag/d1/1790000000000', { auth: DEV, body: { tipo: 'minuto' } }));
+  await negado(req('POST', '/diag/d1/1790000000000', { auth: DEV, body: 'x'.repeat(65536) }));
+  await negado(req('POST', '/diag/d1/abc', { auth: DEV, body: registro }));
+  // Lê-se pelo console: nem o PC, nem o professor vinculado, nem a escola.
+  await req('PUT', '/school/meta/schoolUid', { admin: true, body: 'uid-prof' });
+  for (const auth of [DEV, PROF, OUTRO]) {
+    await negado(req('GET', '/diag/d1', { auth }));
+    await negado(req('GET', '/diag', { auth }));
+  }
+  await permitido(req('DELETE', '/diag/d1', { auth: DEV }));
+});
+
 test('wallpaper: dono escreve; device vinculado lê; sem vínculo não lê', { skip }, async () => {
   await semear({ comBind: true });
   await permitido(
