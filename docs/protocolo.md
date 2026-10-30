@@ -480,7 +480,24 @@ suspensão, o kernel e o PID 1 só no que é tampa, sono, desligamento e Wi-Fi, 
 do agente só o Wi-Fi da escola. A cada boot (e no início), um registro `boot`
 com a versão, o firmware, a tampa, os últimos boots e o fim do anterior
 (`limpo` ou `abrupto`, com as últimas linhas). No fim, `fim` (`motivo` =
-`prazo` ou `app`). Cada registro é um texto JSON (< 65536) em
+`prazo` ou `app`). No pacote seguinte ao 1.31.1, o `minuto` traz também a
+internet: `wifi.dns`; `sondas`, uma por alvo (`portal`, `google`, `youtube`,
+`docs` e `firebase`, o banco do agente), por `curl -I` sem seguir
+redirecionamento: `dns`, `tcp`, `tls`, `ttfb` e `total` em ms acumulados desde
+o início, `http`, `ip` e `erro`; `ping` (`roteador` = gateway, `internet` =
+1.1.1.1): `perda` em % e `min`/`media`/`max` em ms, ou `erro`; `enlace`, do
+`iw station dump`, em texto: `bssid`, `sinal`, `sinal_medio`, `sinal_beacon`,
+`tx`, `rx`, `tx_repetidos`, `tx_falhos`, `beacons_perdidos`, `vazao_esperada`
+e `conectado` (os contadores somam desde a associação); `trafego`: `rx_kb` e
+`tx_kb` do Wi-Fi desde o minuto anterior, em `s` segundos (`null` no primeiro);
+`sistema`: `carga`, `cpu` em %, `livre_mb`, `swap_mb`, `pressao` (PSI avg60 de
+`cpu`, `memory` e `io`), `temp` em °C e `processos` (os 5 nomes que mais
+ocupam memória, em MB); `nav`, as páginas medidas pela extensão (§6): `host`,
+`ms` até carregar, `resp` até a resposta, `erro` (`net::ERR_*`) e `t`, a
+chegada no agente. A cada 15 min (e no primeiro), `velocidade`: `baixa` (5 MB)
+e `sobe` (1 MB) no speed.cloudflare.com, 8 s no máximo cada, com `kbps`, `kb`,
+`s` e `erro`; o `trafego` desse minuto conta o teste. Campo que o PC não
+consegue ler sai vazio ou com `erro`. Cada registro é um texto JSON (< 65536) em
 `/diag/{deviceId}/{sessão}`, sessão = início em ms; linha que fala de senha ou
 chave nunca sai. Sem internet, até 240 registros esperam no PC e sobem em
 ordem quando a rede volta. `horas` fora da faixa: `payload_invalido`. Só o
@@ -1087,6 +1104,17 @@ gera).
   critério do §7.1); detalhes no §9.
 - **Energia** (pacote 1.30.0): o comando `energia` (§3) desliga, reinicia ou
   encerra a sessão; sem tela ou aviso no PC.
+- **Páginas no diagnóstico** (extensão 0.8.0, pacote seguinte ao 1.31.1): com
+  `diagnostico` (§3) vigente, o agente manda `{t:'diag', ativo:true}` pela
+  ponte a cada `hello` e `{t:'diag', ativo}` quando a gravação liga, para ou
+  vence; a queda da ponte desliga a medição. Ligada, a extensão mede as
+  navegações da aba principal (webNavigation, fora o prerender; `ERR_ABORTED`,
+  o aluno que parou ou saiu, não conta) e devolve `{t:'nav', itens:[{host, ms,
+  resp?, erro?}]}` em lotes de 10 itens ou 5 s, até 50 guardados. Só o host
+  sai, nunca caminho ou query. O agente só aceita da sessão ativa, descarta o
+  item fora do formato (host em minúsculas sem caminho, `ms` e `resp` inteiros
+  de 0 a 600000, `erro` = `net::ERR_*`) e guarda até 200 por minuto. No
+  Chromebook não há agente, e a medição nunca liga.
 
 ## 7. Arquivo da unidade (fotos e histórico — Celita OS)
 
@@ -1350,6 +1378,9 @@ pacote do Celita, em qualquer ordem.
    "Atualizar o Celita OS agora".
 3. APK 0.31.0: no ⋮ do PC, "Gravar diagnóstico". PC sem o agente novo
    responde `tipo_desconhecido` ("versão antiga — atualize-o").
+4. Internet e páginas (pacote seguinte ao 1.31.1, com a extensão 0.8.0 dentro):
+   sem mudança de rules nem de app; o registro só ganha campos. A extensão 0.8.0
+   na Web Store não muda nada no Chromebook (lá não há agente).
 
 ## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
 
@@ -1445,6 +1476,18 @@ automática é de cada unidade (Celita ≥ 1.31.0, chave "Conectar automaticamen
 nas Redes salvas): não viaja e fica quando a escola regrava o perfil. Ao gravar,
 o agente mexe só em rede e senha do perfil que a unidade já tem (IP,
 prioridade e endereço físico ficam) ou cria `celita-<id>.nmconnection`.
+
+**Preferidas** (pacote seguinte ao 1.31.1, chave "Preferida" nas Redes salvas
+da Central) — as redes que puxam a unidade quando aparecem com sinal bom, em
+todas as unidades. Viajam num registro reservado de `redes`, com o id da
+classe que nenhuma rede tem: os 22 primeiros caracteres do base64url de
+`SHA-256("celita-preferidas-v1" ‖ 0x00 ‖ "lista")`, e no `env` `{v:1, id,
+preferidas:[ids de rede]}` (até 200). Vale a mudança mais nova: o pedido da
+Central desta unidade (hora dele) contra o `ts` do registro; sem internet ou
+sem a chave, o pedido espera. Cada unidade põe `autoconnect-priority` 10 no
+perfil da rede preferida e tira do que saiu da lista; prioridade posta de
+outro jeito fica. Agente de antes lê o registro como formato novo e o deixa
+como está.
 
 **Quem vence** (a cada 5 min e a cada mudança nos perfis):
 
