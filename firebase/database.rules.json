@@ -15,6 +15,7 @@
           "v":     { ".validate": "newData.isNumber()" },
           "ext":   { ".validate": "newData.isString() && newData.val().length <= 20" },
           "os":    { ".validate": "newData.isString() && newData.val().length <= 20" },
+          "diag":  { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         },
 
