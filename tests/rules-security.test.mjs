@@ -93,6 +93,11 @@ test('meta: primeiro write fixa o uid; outro auth não rouba', { skip }, async (
   await permitido(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { ext: 'celita-0.12.0', os: '1.24.0' } }));
   await negado(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { os: 'x'.repeat(21) } }));
   await negado(req('PATCH', '/devices/d1/meta', { auth: PROF, body: { os: '9.9.9' } }));
+  // meta/diag: até quando o PC grava o diagnóstico (ms; 0 = não grava). Só o PC, só número.
+  await permitido(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { diag: 1793287242914 } }));
+  await permitido(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { diag: 0 } }));
+  await negado(req('PATCH', '/devices/d1/meta', { auth: DEV, body: { diag: '1793287242914' } }));
+  await negado(req('PATCH', '/devices/d1/meta', { auth: PROF, body: { diag: 0 } }));
 });
 
 test('pairing: só o device grava; professor não lê', { skip }, async () => {

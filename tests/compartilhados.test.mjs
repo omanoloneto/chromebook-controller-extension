@@ -25,11 +25,11 @@ test('rules e protocolo batem com tests/fixtures/compartilhados.sha256', () => {
     const real = createHash('sha256').update(readFileSync(new URL(arquivo, raiz))).digest('hex');
     assert.equal(real, hash, arquivo);
   }
-  // Valor fixado pelo /diag (comando `diagnostico`), sobre os guardiões do Wi-Fi
-  // (protocolo §9: meta/kcv, guardioes, entregas) e a meta que não toma id do
-  // roster da escola (§4).
+  // Valor fixado pelo meta/diag (até quando o PC grava o diagnóstico, §3),
+  // sobre o /diag, os guardiões do Wi-Fi (§9: meta/kcv, guardioes, entregas)
+  // e a meta que não toma id do roster da escola (§4).
   assert.equal(
     esperados['firebase/database.rules.json'],
-    'eb3f6122a358f94da7cdb7a193f4f2150cd34d00808565bea87fe76cf061933d',
+    '6e95d403436a48454fd58eb5b6d9f71699781eb2ec4441c9b692f81848a76bfa',
   );
 });

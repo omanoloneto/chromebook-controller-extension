@@ -30,9 +30,13 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
 
 ```
 /devices/{deviceId}/
-  meta/ {uid, pub, label, v:4, ext} # claro; escrito pela EXTENSÃO (uid = Auth anônima;
+  meta/ {uid, pub, label, v:4, ext, os?, diag?}
+                                    # claro; escrito pela EXTENSÃO (uid = Auth anônima;
                                     # ext = versão da extensão, exibida no app;
-                                    # no Celita OS, celita-<versão do pacote> — §6)
+                                    # no Celita OS, celita-<versão do pacote> — §6;
+                                    # os = versão do Celita; diag = até quando o PC
+                                    # grava o diagnóstico, ms do relógio dele, 0 =
+                                    # não grava — agente ≥ 1.33, §3 `diagnostico`)
   pairing/ {token}                  # token one-time do QR; ninguém lê (só as rules);
                                     # rotacionado após cada bind e cada unbind
   bind/ {teacherUid, teacherPub, teacherName, token, ts, numero?}
@@ -501,7 +505,11 @@ consegue ler sai vazio ou com `erro`. Cada registro é um texto JSON (< 65536) e
 `/diag/{deviceId}/{sessão}`, sessão = início em ms; linha que fala de senha ou
 chave nunca sai. Sem internet, até 240 registros esperam no PC e sobem em
 ordem quando a rede volta. `horas` fora da faixa: `payload_invalido`. Só o
-agente do Celita atende.
+agente do Celita atende. O agente (Celita ≥ 1.33) publica em **`meta/diag`**
+até quando grava (ms do relógio do PC; `0` quando para ou vence; sobe no
+primeiro laço com rede depois de cada boot e, se as rules recusarem, tenta de
+novo em 10 min): o app mostra "Gravando até as HH:MM", desabilita o botão e
+oferece "Parar". Agente anterior não publica, e o app trata como "não grava".
 ```json
 { "v":1, "type":"diagnostico", "id":"a56", "payload":{ "horas":6 } }
 ```
