@@ -69,6 +69,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # o professor apaga pedido/mão ao agir, nunca
                                     # chat; qualquer professor apaga > 12 h
   report: {env: "<envelope>", ts}   # último tab_report (sobrescreve); ts = serverTimestamp
+  health: {env: "<envelope>", ts}   # último health_report (Celita OS; sobrescreve
+                                    # quando muda ou a cada 24 h)
   snapshot: {env: "<envelope>", ts} # última captura (camera_snapshot ou
                                     # screen_snapshot; sobrescreve); o professor
                                     # vinculado ou MEMBRO só apaga (Excluir no app)
@@ -336,6 +338,7 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 | `state/classview` | `payload.rev` monotônico (`>`), persistido; **delete/envelope ilegível limpa** o snapshot (PC deixa de se considerar telão) | — (snapshot idempotente) |
 | `state/unit` | `payload.rev` monotônico (`>`), persistido; ilegível/null **ignora** (número vigente continua — re-pareamento reescreve) | — (snapshot idempotente) |
 | `report` (PC→professor) | `(sid,seq)` em memória | ±120 s no recebimento ao vivo; a 1ª leitura ao abrir o app pode ser antiga → aceita, com `lastReportAt` vindo do `ts` (servidor) do nó |
+| `health` (PC→professor) | `(sid,seq)` em memória | — (repousa no banco; a idade vem do `ts` do nó) |
 | `ack` | `(sid,seq)` em memória | ±120 s |
 | `state/lock`, `state/exam` | `payload.rev` monotônico (`>=`, igual reaplica), persistido; nulo/ilegível **não muda**; o PC guarda cópia local e destrava no prazo (`ate − env.ts`, teto 2 h / 4 h) | — |
 | `state/monitor` | `payload.rev` monotônico (`>`), persistido; nó apagado = para na hora | `env.ts` ±120 s; prazo `ate − env.ts`, teto 45 s |
@@ -801,6 +804,48 @@ a presença já cobre o "estou vivo" a cada 25s). Payload interno idêntico ao v
 - O app deduplica `events` por `(ts, url)` — robusto a relatórios perdidos.
 - Ao desvincular, o PC **deleta** `report`/`ack`/`presence` (limpeza).
 
+### `health_report` (PC → professor)
+
+Saúde da frota (agente Celita ≥ 0.23.0, app ≥ 0.32.0): o que o PC sabe de si
+e que pede manutenção. O agente **sobrescreve** `health = {env, ts}` quando o
+conteúdo muda (confere a cada 15 min), quando a sessão cifrada muda ou a cada
+**24 h**. O envelope repousa no banco: o app lê a saúde de um PC desligado, e
+a idade vem do `ts` (servidor) do nó. Todo campo é opcional — o PC manda o que
+conseguiu ler.
+
+```json
+{
+  "sid": 1767369500000, "seq": 3, "ts": 1767369588456,
+  "type": "health_report", "v": 1,
+  "firmware": "MrChromebox-2609.3", "model": "Kefka",
+  "update": { "state": "atualizado", "reboot": true },
+  "lastShutdown": "abrupt",
+  "battery": { "health": 80, "cycles": 412 },
+  "disk": { "root": { "freeGb": 3.2, "totalGb": 28.4 }, "home": { "freeGb": 1.1, "totalGb": 20.0 } },
+  "storageWear": "aviso",
+  "wifi": [ { "ssid": "Academico", "reason": "wrong_key" } ]
+}
+```
+
+- `firmware` (≤ 60) e `model` (≤ 40): `bios_version` e `product_name` do DMI.
+  O app compara o firmware só entre PCs do **mesmo** `model`.
+- `update.state`: `ESTADO` do atualizador (`erro`, `verificando`, `baixando`,
+  `baixado`, `atualizado`, `instalando`); `update.reboot`: `true` quando a
+  atualização instalada espera o reinício.
+- `lastShutdown`: `clean` ou `abrupt` — como terminou o boot anterior.
+- `battery.health`: capacidade cheia sobre a de fábrica, 0–100;
+  `battery.cycles`: ciclos de carga.
+- `disk.root` e `disk.home` (este só quando é outro disco): GB livres e totais.
+- `storageWear`: fim de vida do eMMC — `normal`, `aviso` ou `urgente`.
+- `wifi` (≤ 5): redes salvas que o PC não conseguiu autenticar nas últimas
+  24 h; `ssid` ≤ 32, `reason` = `wrong_key` (único motivo por ora).
+- **Privacidade**: nunca URL, título, conta ou conteúdo do aluno — só o estado
+  da máquina. Os SSIDs são os das redes salvas, que a escola já conhece (§9).
+- O app revalida tipos e tetos e ignora campo desconhecido.
+- Rules antigas (sem `health`) recusam a gravação: o agente desiste por 1 h e
+  tenta de novo, sem derrubar o stream de comandos.
+- Ao desvincular, o PC **deleta** `health` junto com `report`.
+
 ### `up` (PC → professor)
 
 Fila do aluno em `up/{pushId}` (POST; id do servidor). Texto em claro:
@@ -880,6 +925,7 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   apenas **deletar** (consumir).
 - `report`, `ack`, `presence` — graváveis só pelo device (`meta/uid`); em `ack`
   o professor pode apenas deletar.
+- `health` — gravável só pelo device; `{env < 8192, ts}` e nada mais.
 - `snapshot` — gravável só pelo device; o professor vinculado ou MEMBRO pode
   apenas apagar (o "Excluir" da captura no app; o PC não guarda cópia).
 - `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
@@ -1076,7 +1122,7 @@ online desde a tela de login, o `tab_report` chega com `tabs` vazias enquanto
 ninguém abriu o navegador, `meta/ext` vem como `celita-<versão>`, e os tipos
 `capture_screen`/`screen_snapshot` e os campos `apps`/`user` só existem nesse
 cliente. O pareamento por QR é o mesmo (a extensão exibe o QR que o agente
-gera).
+gera). O `health_report` (§3) também só existe nesse cliente.
 
 - **`meta/ext` = `celita-<versão do pacote>`**: o build do `.deb` grava a
   versão do pacote no `VERSION` do agente (e falha se não trocar exatamente
@@ -1389,6 +1435,14 @@ pacote do Celita, em qualquer ordem.
 4. Internet e páginas (pacote seguinte ao 1.31.1, com a extensão 0.8.0 dentro):
    sem mudança de rules nem de app; o registro só ganha campos. A extensão 0.8.0
    na Web Store não muda nada no Chromebook (lá não há agente).
+
+### Saúde da frota (app 0.32.0, Celita 1.38.0)
+
+1. Rules com `devices/{id}/health` (deploy). Antes dele, o agente novo tem a
+   gravação recusada e tenta de novo a cada hora, sem outro efeito.
+2. Celita 1.38.0 (agente 0.23.0 com o `health_report`).
+3. APK 0.32.0: em Ajustes, "Saúde da frota". PC com agente antigo aparece só
+   pelos motivos que o app já conhece (versão do Celita e dias sem aparecer).
 
 ## 9. Wi-Fi da escola (Celita OS ≥ 1.30.0)
 

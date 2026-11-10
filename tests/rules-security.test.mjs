@@ -186,6 +186,18 @@ test('report/presence: só o device escreve; professor vinculado lê', { skip },
   await negado(req('GET', '/devices/d1', { auth: PROF2 }));
 });
 
+test('health: só o device escreve {env, ts}; professor vinculado lê', { skip }, async () => {
+  await semear({ comBind: true });
+  const corpo = { env: 'ciphertext', ts: { '.sv': 'timestamp' } };
+  await permitido(req('PUT', '/devices/d1/health', { auth: DEV, body: corpo }));
+  await negado(req('PUT', '/devices/d1/health', { auth: PROF, body: { env: 'forja', ts: 1 } }));
+  await negado(req('PUT', '/devices/d1/health', { auth: DEV, body: { env: 'x'.repeat(8192), ts: 1 } }));
+  await negado(req('PUT', '/devices/d1/health', { auth: DEV, body: { ...corpo, extra: 1 } }));
+  await permitido(req('GET', '/devices/d1/health', { auth: PROF }));
+  await negado(req('GET', '/devices/d1/health', { auth: PROF2 }));
+  await permitido(req('DELETE', '/devices/d1/health', { auth: DEV }));
+});
+
 test('ack: device escreve; professor só deleta', { skip }, async () => {
   await semear({ comBind: true });
   await permitido(req('PUT', '/devices/d1/ack/x1', { auth: DEV, body: 'env' }));

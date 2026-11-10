@@ -72,6 +72,12 @@
           "ts":  { ".validate": "newData.isNumber()" },
           "$other": { ".validate": false }
         },
+        "health": {
+          ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
+          "env": { ".validate": "newData.isString() && newData.val().length < 8192" },
+          "ts":  { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
 
         "snapshot": {
           ".write": "auth != null && (data.parent().child('meta/uid').val() === auth.uid || (!newData.exists() && (data.parent().child('bind/teacherUid').val() === auth.uid || (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))))",
