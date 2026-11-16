@@ -8,6 +8,7 @@
         ".read": "auth != null && (data.child('meta/uid').val() === auth.uid || data.child('bind/teacherUid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
 
         "meta": {
+          ".read": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)",
           ".write": "auth != null && ((!data.child('uid').exists() && newData.child('uid').val() === auth.uid && root.child('school/devices').child($deviceId).val() !== true) || data.child('uid').val() === auth.uid)",
           "uid":   { ".validate": "newData.isString()" },
           "pub":   { ".validate": "newData.isString() && newData.val().length <= 64" },
@@ -32,7 +33,7 @@
           "teacherName": { ".validate": "newData.isString() && newData.val().length <= 60" },
           "token":       { ".validate": "newData.isString() && newData.val().length <= 64" },
           "ts":          { ".validate": "newData.isNumber()" },
-          "numero":      { ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 9999" },
+          "numero":      { ".read": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)", ".validate": "newData.isNumber() && newData.val() >= 1 && newData.val() <= 9999" },
           "$other":      { ".validate": false }
         },
 
@@ -87,8 +88,44 @@
         },
 
         "presence": {
+          ".read": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)",
           ".write": "auth != null && data.parent().child('meta/uid').val() === auth.uid",
           "lastSeen": { ".validate": "newData.isNumber()" },
+          "$other": { ".validate": false }
+        },
+
+        "mon": {
+          ".read": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)",
+          "pub": {
+            ".write": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
+            ".validate": "newData.isString() && newData.val().matches(/^[A-Za-z0-9_-]{43}$/)"
+          },
+          "cmd": {
+            ".write": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)",
+            "$pushId": {
+              ".write": "auth != null && data.parent().parent().parent().child('meta/uid').val() === auth.uid && !newData.exists()",
+              ".validate": "newData.isString() && newData.val().length < 65536"
+            }
+          },
+          "ack": {
+            ".write": "auth != null && data.parent().parent().child('meta/uid').val() === auth.uid",
+            "$pushId": {
+              ".write": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true) && !newData.exists()",
+              ".validate": "newData.isString() && newData.val().length < 16384"
+            }
+          },
+          "snapshot": {
+            ".write": "(auth != null && data.parent().parent().child('meta/uid').val() === auth.uid) || (!newData.exists() && (((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true) || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))))",
+            "env": { ".validate": "newData.isString() && newData.val().length < 1048576" },
+            "ts":  { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          },
+          "carga": {
+            ".write": "auth != null && data.parent().parent().child('meta/uid').val() === auth.uid",
+            "env": { ".validate": "newData.isString() && newData.val().length < 8192" },
+            "ts":  { ".validate": "newData.isNumber()" },
+            "$other": { ".validate": false }
+          },
           "$other": { ".validate": false }
         },
 
@@ -210,8 +247,23 @@
           ".validate": "newData.val() === true && $email.matches(/^[a-z0-9,_+'-]+@[a-z0-9,-]+$/)"
         }
       },
-      "devices": {
+      "monitores": {
         ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
+        ".write": "auth != null && root.child('school/meta/schoolUid').val() === auth.uid",
+        "$email": {
+          ".read": "auth != null && auth.token.email != null && auth.token.email_verified === true && auth.token.email.toLowerCase().replace('.', ',') === $email",
+          ".validate": "newData.val() === true && $email.matches(/^[a-z0-9,_+'-]+@[a-z0-9,-]+$/)"
+        }
+      },
+      "monitorKey": {
+        ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) || (auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)",
+        ".write": "auth != null && root.child('school/meta/schoolUid').val() === auth.uid",
+        "keys": { ".validate": "newData.isString() && newData.val().length < 16384" },
+        "ts": { ".validate": "newData.isNumber()" },
+        "$other": { ".validate": false }
+      },
+      "devices": {
+        ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) || (auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)",
         "$deviceId": {
           ".write": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))",
           ".validate": "newData.isBoolean()"

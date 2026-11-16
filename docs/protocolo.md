@@ -75,6 +75,13 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # screen_snapshot; sobrescreve); o professor
                                     # vinculado ou MEMBRO só apaga (Excluir no app)
   presence/ {lastSeen}              # heartbeat do PC a cada 25s (serverTimestamp)
+  mon/                              # canal da MONITORA (§3.1; Celita ≥ 1.40.0)
+    pub: "<x25519 b64url>"          # pub da chave da monitora da escola; gravada
+                                    # pelo professor liberado
+    cmd/{pushId}: "<envelope>"      # fila monitora→PC (só os 4 tipos do §3.1)
+    ack/{pushId}: "<envelope>"      # PC→monitora; ela só apaga
+    snapshot: {env, ts}             # só screen_snapshot, cifrado para a monitora
+    carga: {env, ts}                # carga_report: bateria, tomada, conta aberta
 
 /device_uids/{uid}: deviceId        # índice reverso (escrito pela extensão);
                                     # usado só pelas rules (gate do wallpaper)
@@ -908,6 +915,33 @@ imagem; o `type` diz se é a webcam ou a tela.
 - Privacidade: imagem de **menor** — só liga com a policy do admin e o LED
   aceso; base legal/consentimento é responsabilidade da escola (LGPD).
 
+### 3.1 Canal da monitora (`mon/`, Celita OS ≥ 1.40.0, app 0.33.0)
+
+A monitora ajuda na sala e cuida do carrinho; **não** vê câmera, fotos de
+entrada, histórico nem mexe em bloqueios, escola ou atualização. Por isso ela
+nunca recebe a chave da escola: o fundador gera uma **chave da monitora** (par
+X25519 em `/school/monitorKey/keys`, JSON `{priv, pub}` em base64url, lida só
+por fundador, professores liberados e monitoras), e o app do professor grava a
+`pub` em `devices/{id}/mon/pub` de cada PC da escola.
+
+- Chave do canal = `derive_session_key(chave do PC, mon/pub)`, a mesma
+  derivação do §3 com a pub da monitora no lugar da do professor. Envelope,
+  cabeçalho `sid/seq/ts` e janela de 12 h iguais aos do `cmd/`; o PC guarda um
+  anti-replay separado (`monCmd`).
+- `mon/pub` ausente ou inválida: o PC desliga o canal e consome o que chegar.
+- O PC aceita pela `mon/cmd` **só** `capture_screen`, `show_message` (só
+  `title`/`body`), `close_all_tabs` (payload vazio: sem `fimDeAula`) e
+  `energia` (só `acao`; mesma validade de 2 min). Qualquer outro tipo recebe
+  `ack {ok:false, error:"nao_permitido"}` e não executa. A recusa é do PC: o
+  app esconder os botões é só conveniência.
+- `screen_snapshot` da monitora vai em `mon/snapshot`, nunca em `snapshot`.
+- `carga_report` em `mon/carga` (o PC confere a cada 2 min e regrava ao mudar
+  ou a cada 10 min): `{v:1, type:"carga_report", level?: 0..100, plugged?:
+  bool, session: bool}`.
+- Tirar o e-mail de `/school/monitores` corta a monitora na hora pelas rules;
+  trocar a chave (fundador regrava `monitorKey`, professores regravam `mon/pub`)
+  invalida a cópia que ela guardou.
+
 ## 4. Security Rules (resumo normativo)
 
 Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
@@ -931,6 +965,15 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
   professor vinculado ou MEMBRO pode apenas apagar filhos.
 - `state` aceita também `lock`, `exam`, `monitor`.
+- `/school/monitores/{email}` — só o fundador grava; professores liberados
+  leem a lista; cada monitora lê a própria entrada. `/school/monitorKey` — só
+  o fundador grava; leem fundador, professores liberados e monitoras.
+- Monitora (e-mail verificado em `/school/monitores`), só para PC listado em
+  `/school/devices`: lê `meta`, `presence`, `bind/numero` e `mon`; enfileira em
+  `mon/cmd`; apaga `mon/ack/*` e `mon/snapshot`. Nada além disso: nem
+  `report`, `snapshot`, `state`, `cmd`, `midia`, `archive`, `thumbs`,
+  `history` ou a chave da escola. `mon/pub` é gravada por professor liberado;
+  `mon/ack`, `mon/snapshot` e `mon/carga`, só pelo PC.
 - `/fcm/{uid}` — só o dono lê e grava; cada `{chave}` (`^[A-Za-z0-9_-]{22}$`)
   é `{t: string 1..4095, ts: number}`, nada mais.
 - `/thumbs/{id}` — `.read` = device, professor vinculado ou MEMBRO; o device
