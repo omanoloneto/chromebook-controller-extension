@@ -103,6 +103,12 @@ async function semear() {
   await req('PUT', '/devices/d9', { admin: true, body: pc('uid-d9', 9) });
   await req('PUT', '/midia/d1/aaaaaaaaaaaaaaaa', { admin: true, body: { env: 'foto', ts: 1 } });
   await req('PUT', '/archive/d1/nav/2026-11-16/k1', { admin: true, body: { env: 'nav', ts: 1 } });
+  await req('PUT', '/archive/d1/navmon/2026-11-16/k1', { admin: true, body: { env: 'navmon', ts: 1 } });
+  await req('PUT', '/archive/d9/navmon/2026-11-16/k1', { admin: true, body: { env: 'navmon', ts: 1 } });
+  await req('PUT', '/archive/d1/fotos/2026-11-16/1763300000000', {
+    admin: true,
+    body: { u: 'uid-device', r: 'a'.repeat(22) },
+  });
 }
 
 test('monitora lê só o que a sala precisa', { skip }, async () => {
@@ -120,6 +126,33 @@ test('monitora lê só o que a sala precisa', { skip }, async () => {
   }
   // PC fora do roster da escola: nada.
   await negado(req('GET', '/devices/d9/mon', { auth: MONITORA }));
+});
+
+test('monitora lê o histórico dela e nada mais do arquivo', { skip }, async () => {
+  await semear();
+  await permitido(req('GET', '/archive/d1/navmon', { auth: MONITORA }));
+  await permitido(req('GET', '/archive/d1/navmon/2026-11-16', { auth: MONITORA }));
+  for (const p of ['/archive/d1', '/archive/d1/nav', '/archive/d1/nav/2026-11-16', '/archive/d1/fotos',
+                   '/archive/d1/fotos/2026-11-16', '/archive/d9/navmon']) {
+    await negado(req('GET', p, { auth: MONITORA }));
+  }
+  await negado(req('GET', '/archive/d1/navmon', { auth: MON_NV }));
+  await negado(req('GET', '/archive/d1/navmon', { auth: INTRUSO }));
+  await negado(req('POST', '/archive/d1/navmon/2026-11-16', { auth: MONITORA, body: { env: 'x', ts: 2 } }));
+  await negado(req('DELETE', '/archive/d1/navmon/2026-11-16', { auth: MONITORA }));
+  await negado(req('DELETE', '/archive/d1/navmon/2026-11-16/k1', { auth: MONITORA }));
+  await permitido(req('GET', '/archive/d1/navmon', { auth: PROF_G2 }));
+});
+
+test('o PC da escola grava a cópia da monitora; professor e PC podam', { skip }, async () => {
+  await semear();
+  await permitido(req('POST', '/archive/d1/navmon/2026-11-17', { auth: DEV, body: { env: 'lote', ts: 2 } }));
+  await negado(req('POST', '/archive/d1/navmon/2026-11-17', { auth: DEV, body: { env: 'x'.repeat(70000), ts: 2 } }));
+  await negado(req('POST', '/archive/d1/navmon/2026-11-17', { auth: DEV, body: { env: 'lote', ts: 2, foto: 1 } }));
+  await negado(req('POST', '/archive/d1/navmon/ontem', { auth: DEV, body: { env: 'lote', ts: 2 } }));
+  await negado(req('POST', '/archive/d1/navmon/2026-11-17', { auth: PROF_G2, body: { env: 'lote', ts: 2 } }));
+  await permitido(req('DELETE', '/archive/d1/navmon/2026-11-16', { auth: PROF_G2 }));
+  await permitido(req('DELETE', '/archive/d1/navmon/2026-11-17', { auth: DEV }));
 });
 
 test('monitora só comanda pelo canal dela', { skip }, async () => {

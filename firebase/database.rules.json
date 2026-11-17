@@ -178,6 +178,19 @@
             }
           }
         },
+        "navmon": {
+          ".read": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true)",
+          "$day": {
+            ".write": "auth != null && ((root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid && (root.child('school/meta/schoolUid').exists() && root.child('devices').child($deviceId).child('bind/teacherUid').val() === root.child('school/meta/schoolUid').val())) || (!newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))))",
+            ".validate": "$day.matches(/^[0-9]{4}-[0-9]{2}-[0-9]{2}$/) && newData.hasChildren()",
+            "$k": {
+              ".validate": "newData.hasChildren(['env', 'ts'])",
+              "env": { ".validate": "newData.isString() && newData.val().length < 65536" },
+              "ts":  { ".validate": "newData.isNumber()" },
+              "$other": { ".validate": false }
+            }
+          }
+        },
         "fotos": {
           "$day": {
             ".write": "auth != null && ((root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid && (root.child('school/meta/schoolUid').exists() && root.child('devices').child($deviceId).child('bind/teacherUid').val() === root.child('school/meta/schoolUid').val())) || (!newData.exists() && (root.child('devices').child($deviceId).child('meta/uid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))))",

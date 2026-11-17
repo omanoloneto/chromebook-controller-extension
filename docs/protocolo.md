@@ -204,6 +204,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
   nav/{dia}/{pushId}: {env, ts}     # SÓ PC vinculado à escola — §7). Gravado pelo
                                     # agente; lido pelo app. nav = lotes nav-v1
                                     # (env = envelope, ts = serverTimestamp).
+  navmon/{dia}/{pushId}: {env, ts}  # cópia dos lotes para a MONITORA (§3.1;
+                                    # Celita >= 1.41.0), sem `foto`
   fotos/{dia}/{ts13}: {u, r, l?}    # índice das fotos: ts13 = ms com 13 dígitos;
                                     # u = uid anônimo do agente que enviou; r =
                                     # 16 bytes aleatórios em base64url (22 chars);
@@ -917,8 +919,9 @@ imagem; o `type` diz se é a webcam ou a tela.
 
 ### 3.1 Canal da monitora (`mon/`, Celita OS ≥ 1.40.0, app 0.33.0)
 
-A monitora ajuda na sala e cuida do carrinho; **não** vê câmera, fotos de
-entrada, histórico nem mexe em bloqueios, escola ou atualização. Por isso ela
+A monitora ajuda na sala e cuida do carrinho; vê o histórico de navegação
+(Celita OS ≥ 1.41.0), mas **não** vê câmera nem fotos de entrada e não mexe em
+bloqueios, escola ou atualização. Por isso ela
 nunca recebe a chave da escola: o fundador gera uma **chave da monitora** (par
 X25519 em `/school/monitorKey/keys`, JSON `{priv, pub}` em base64url, lida só
 por fundador, professores liberados e monitoras), e o app do professor grava a
@@ -938,6 +941,11 @@ por fundador, professores liberados e monitoras), e o app do professor grava a
 - `carga_report` em `mon/carga` (o PC confere a cada 2 min e regrava ao mudar
   ou a cada 10 min): `{v:1, type:"carga_report", level?: 0..100, plugged?:
   bool, session: bool}`.
+- Histórico: a cada lote de `archive/{id}/nav/{dia}` (§7.4) o PC grava o mesmo
+  OBJ, sem o campo `foto` dos eventos, selado com a chave do canal em
+  `archive/{id}/navmon/{dia}`. Sem `mon/pub` válida não grava; falha aqui não
+  segura o lote da escola. Só vale dali para a frente (o PC não recifra o que
+  já subiu). Retenção igual à do `nav` (§7.6).
 - Tirar o e-mail de `/school/monitores` corta a monitora na hora pelas rules;
   trocar a chave (fundador regrava `monitorKey`, professores regravam `mon/pub`)
   invalida a cópia que ela guardou.
@@ -969,9 +977,10 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
   leem a lista; cada monitora lê a própria entrada. `/school/monitorKey` — só
   o fundador grava; leem fundador, professores liberados e monitoras.
 - Monitora (e-mail verificado em `/school/monitores`), só para PC listado em
-  `/school/devices`: lê `meta`, `presence`, `bind/numero` e `mon`; enfileira em
-  `mon/cmd`; apaga `mon/ack/*` e `mon/snapshot`. Nada além disso: nem
-  `report`, `snapshot`, `state`, `cmd`, `midia`, `archive`, `thumbs`,
+  `/school/devices`: lê `meta`, `presence`, `bind/numero`, `mon` e
+  `archive/{id}/navmon`; enfileira em `mon/cmd`; apaga `mon/ack/*` e
+  `mon/snapshot`. Nada além disso: nem `report`, `snapshot`, `state`, `cmd`,
+  `midia`, `archive/{id}/nav` ou `fotos`, `thumbs`,
   `history` ou a chave da escola. `mon/pub` é gravada por professor liberado;
   `mon/ack`, `mon/snapshot` e `mon/carga`, só pelo PC.
 - `/fcm/{uid}` — só o dono lê e grava; cada `{chave}` (`^[A-Za-z0-9_-]{22}$`)
@@ -1057,10 +1066,12 @@ ESCOLA = `school/meta/schoolUid` existe **e** `devices/{id}/bind/teacherUid`
 
 - `.read` = DONO ou MEMBRO; `.write` no nó inteiro = só apagar, por DONO ou
   MEMBRO.
-- `nav/{dia}` e `fotos/{dia}` — gravar = DONO **e** ESCOLA; apagar = DONO ou
+- `nav/{dia}`, `navmon/{dia}` e `fotos/{dia}` — gravar = DONO **e** ESCOLA; apagar = DONO ou
   MEMBRO. `dia` casa `^[0-9]{4}-[0-9]{2}-[0-9]{2}$` e o valor precisa ter
   filhos (nada de valor cru no dia).
-- `nav/{dia}/{k}` = `{env: string < 65536, ts: number}`, nada mais.
+- `nav/{dia}/{k}` e `navmon/{dia}/{k}` = `{env: string < 65536, ts: number}`,
+  nada mais. `navmon` lê também a monitora (§3.1) de PC listado em
+  `/school/devices`.
 - `fotos/{dia}/{ts13}` — `ts13` casa `^[0-9]{13}$`; `{u, r}` com
   `u === auth.uid` e `r` casando `^[A-Za-z0-9_-]{22}$`, e `l` opcional, só
   `true`; nada mais. Apagar uma foto só = DONO ou MEMBRO (o "Excluir" do app
@@ -1327,11 +1338,11 @@ OBJ = {"v":1,"type":"archived_nav","user":"<login>","login":<ms>,
 ### 7.6 Retenção (15 dias: hoje e os 14 anteriores)
 
 - **Agente** (quem poda de verdade): ao conectar e a cada 6 h,
-  `GET archive/{id}/nav?shallow=true` e `.../fotos?shallow=true` e um PATCH com
+  `GET archive/{id}/nav?shallow=true`, `.../navmon` e `.../fotos` e um PATCH com
   `null` nos dias `D <= hoje − 15`.
 - **App** (reserva): 1 vez por dia por celular (data guardada nas prefs), para
   cada PC de `school/devices`, `update` multi-caminho com
-  `archive/{id}/nav/{d}` e `archive/{id}/fotos/{d}` = `null` para `d` de
+  `archive/{id}/nav/{d}`, `.../navmon/{d}` e `.../fotos/{d}` = `null` para `d` de
   hoje−45 a hoje−15. Só poda depois de receber o relógio do servidor
   (`.info/serverTimeOffset` com conexão ativa; espera até 30 s, senão pula o
   dia) — um celular com a data adiantada apagaria dias ainda válidos.
@@ -1478,6 +1489,15 @@ pacote do Celita, em qualquer ordem.
 4. Internet e páginas (pacote seguinte ao 1.31.1, com a extensão 0.8.0 dentro):
    sem mudança de rules nem de app; o registro só ganha campos. A extensão 0.8.0
    na Web Store não muda nada no Chromebook (lá não há agente).
+
+### Histórico para a monitora (app 0.34.0, Celita 1.41.0)
+
+1. Rules com `archive/{id}/navmon` (deploy). Antes dele, o agente novo tem a
+   cópia recusada e segue só com o lote da escola.
+2. Celita 1.41.0 (agente 0.25.0 grava a cópia).
+3. APK 0.34.0: "Histórico" no PC, no modo monitora. O número da unidade vem
+   do `meta/label` ("Unidade N"), que o PC atualiza ao receber `set_unit`;
+   `bind/numero` só vale enquanto o rótulo não tem número.
 
 ### Saúde da frota (app 0.32.0, Celita 1.38.0)
 
