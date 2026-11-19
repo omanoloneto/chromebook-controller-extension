@@ -945,7 +945,12 @@ por fundador, professores liberados e monitoras), e o app do professor grava a
 - `screen_snapshot` da monitora vai em `mon/snapshot`, nunca em `snapshot`.
 - `carga_report` em `mon/carga` (o PC confere a cada 2 min e regrava ao mudar
   ou a cada 10 min): `{v:1, type:"carga_report", level?: 0..100, plugged?:
-  bool, session: bool}`.
+  bool, session: bool, aluno?: {nome, ano}}`. `aluno` (Celita ≥ 1.42.0) é o
+  da chamada (`state/aluno`, §3.2); ao mudar, o PC regrava no próximo tique
+  da presença (≤ 25 s). A galeria de telas da monitora mostra o nome no
+  lugar da unidade.
+- Liberar uma monitora (app ≥ 0.36.0) já grava a `mon/pub` nos PCs da escola:
+  antes, ela só chegava quando algum professor reabria o app.
 - Histórico: a cada lote de `archive/{id}/nav/{dia}` (§7.4) o PC grava o mesmo
   OBJ, sem o campo `foto` dos eventos, selado com a chave do canal em
   `archive/{id}/navmon/{dia}`. Sem `mon/pub` válida não grava; falha aqui não
@@ -1540,6 +1545,16 @@ pacote do Celita, em qualquer ordem.
 4. Internet e páginas (pacote seguinte ao 1.31.1, com a extensão 0.8.0 dentro):
    sem mudança de rules nem de app; o registro só ganha campos. A extensão 0.8.0
    na Web Store não muda nada no Chromebook (lá não há agente).
+
+### Login obrigatório e galeria de telas (app 0.36.0, Celita 1.42.0)
+
+1. APK 0.36.0: o app só abre com conta Google; conta sem vínculo (fundador,
+   `/school/members` ou `/school/monitores`) fica na tela de espera, que
+   confere de novo a cada 5 s. O papel decide o app: professor ou monitora
+   (não há mais "Entrar como monitora" em Ajustes). Galeria de telas no
+   professor (Aula) e na monitora (Sala).
+2. Celita 1.42.0: o `carga_report` leva o aluno da chamada. Antes dele, a
+   galeria da monitora mostra só a unidade.
 
 ### Chat com escolha de quem recebe (app 0.35.0, Celita 1.41.0)
 
