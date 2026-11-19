@@ -39,7 +39,7 @@
 
         "state": {
           ".write": "auth != null && (data.parent().child('bind/teacherUid').val() === auth.uid || (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))))",
-          "$k": { ".validate": "($k === 'rules' || $k === 'wallpaper' || $k === 'classview' || $k === 'unit' || $k === 'lock' || $k === 'exam' || $k === 'monitor') && newData.isString() && newData.val().length < 262144" }
+          "$k": { ".validate": "($k === 'rules' || $k === 'wallpaper' || $k === 'classview' || $k === 'unit' || $k === 'aluno' || $k === 'lock' || $k === 'exam' || $k === 'monitor') && newData.isString() && newData.val().length < 262144" }
         },
 
         "cmd": {
@@ -119,6 +119,13 @@
             "env": { ".validate": "newData.isString() && newData.val().length < 1048576" },
             "ts":  { ".validate": "newData.isNumber()" },
             "$other": { ".validate": false }
+          },
+          "up": {
+            ".write": "auth != null && data.parent().parent().child('meta/uid').val() === auth.uid",
+            "$pushId": {
+              ".write": "((auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) && root.child('school/devices').child($deviceId).val() === true) && !newData.exists()",
+              ".validate": "newData.isString() && newData.val().length < 4096"
+            }
           },
           "carga": {
             ".write": "auth != null && data.parent().parent().child('meta/uid').val() === auth.uid",
@@ -258,6 +265,18 @@
         "$email": {
           ".read": "auth != null && auth.token.email != null && auth.token.email_verified === true && auth.token.email.toLowerCase().replace('.', ',') === $email",
           ".validate": "newData.val() === true && $email.matches(/^[a-z0-9,_+'-]+@[a-z0-9,-]+$/)"
+        }
+      },
+      "equipe": {
+        ".read": "(auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) || (auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true) || (auth != null && root.child('device_uids').child(auth.uid).isString() && root.child('school/devices').child(root.child('device_uids').child(auth.uid).val()).val() === true && root.child('devices').child(root.child('device_uids').child(auth.uid).val()).child('meta/uid').val() === auth.uid)",
+        "$uid": {
+          ".write": "(auth != null && auth.uid === $uid && ((auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) || (auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) || (!newData.exists() && auth != null && root.child('school/meta/schoolUid').val() === auth.uid)",
+          ".validate": "newData.hasChildren(['nome', 'papel', 'ek', 'visto']) && ((newData.child('papel').val() === 'professor' && (auth != null && (root.child('school/meta/schoolUid').val() === auth.uid || (auth.token.email != null && auth.token.email_verified === true && root.child('school/members').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true)))) || (newData.child('papel').val() === 'monitora' && (auth != null && auth.token.email != null && auth.token.email_verified === true && root.child('school/monitores').child(auth.token.email.toLowerCase().replace('.', ',')).val() === true))) && newData.child('ek').val() === auth.token.email.toLowerCase().replace('.', ',')",
+          "nome": { ".validate": "newData.isString() && newData.val().length >= 1 && newData.val().length <= 60" },
+          "papel": { ".validate": "newData.isString()" },
+          "ek": { ".validate": "newData.isString()" },
+          "visto": { ".validate": "newData.isNumber() && newData.val() <= now + 120000" },
+          "$other": { ".validate": false }
         }
       },
       "monitores": {

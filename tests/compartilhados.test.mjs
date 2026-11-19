@@ -25,11 +25,11 @@ test('rules e protocolo batem com tests/fixtures/compartilhados.sha256', () => {
     const real = createHash('sha256').update(readFileSync(new URL(arquivo, raiz))).digest('hex');
     assert.equal(real, hash, arquivo);
   }
-  // Valor fixado pelo archive/{id}/navmon (histórico da monitora, §3.1), sobre
-  // o canal da monitora, o devices/{id}/health, o meta/diag, o /diag, os
+  // Valor fixado pela equipe, state/aluno e mon/up (chat com escolha, §3.2),
+  // sobre o archive/{id}/navmon, o canal da monitora, o devices/{id}/health, o meta/diag, o /diag, os
   // guardiões do Wi-Fi (§9) e a meta que não toma id do roster da escola (§4).
   assert.equal(
     esperados['firebase/database.rules.json'],
-    '9bdc005d7ca4ab8c3fd039ef58ed343300c90e3da998d45f685283e079d04c20',
+    '34296e87754ed27071e3e3d3b0f7367dadb9b417f16cf4d1ece8f4c72542a839',
   );
 });

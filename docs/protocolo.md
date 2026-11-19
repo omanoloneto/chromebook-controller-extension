@@ -55,6 +55,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
                                     # ausente/null = este PC não é o telão
     unit: "<envelope>"              # set_unit vigente (número da unidade editado
                                     # pelo professor depois do pareamento)
+    aluno: "<envelope>"             # set_aluno vigente: nome e ano do aluno da
+                                    # chamada, para o chat do Celita (§3.2)
     lock: "<envelope>"              # set_lock vigente ("Olhos em mim"; o PC guarda
                                     # cópia local e destrava sozinho no prazo `ate`)
     exam: "<envelope>"              # set_exam vigente (modo prova; idem)
@@ -82,6 +84,8 @@ state/rules|wallpaper (envelope) ► ◄─ stream ── aplica (persiste offli
     ack/{pushId}: "<envelope>"      # PC→monitora; ela só apaga
     snapshot: {env, ts}             # só screen_snapshot, cifrado para a monitora
     carga: {env, ts}                # carga_report: bateria, tomada, conta aberta
+    up/{pushId}: "<envelope>"       # cópia do chat do aluno para MONITORA (§3.2);
+                                    # o PC grava e poda, a monitora só apaga
 
 /device_uids/{uid}: deviceId        # índice reverso (escrito pela extensão);
                                     # usado só pelas rules (gate do wallpaper)
@@ -346,6 +350,7 @@ idêntico ao v3. Texto em claro = JSON com cabeçalho **v4**:
 | `state/wallpaper` | `payload.hash` ≠ último aplicado | — (cosmético) |
 | `state/classview` | `payload.rev` monotônico (`>`), persistido; **delete/envelope ilegível limpa** o snapshot (PC deixa de se considerar telão) | — (snapshot idempotente) |
 | `state/unit` | `payload.rev` monotônico (`>`), persistido; ilegível/null **ignora** (número vigente continua — re-pareamento reescreve) | — (snapshot idempotente) |
+| `state/aluno` | `payload.rev` monotônico (`>`), persistido (`alunoRev`); nome vazio ou ano fora de 1..9 **apaga**; fim de aula apaga | — |
 | `report` (PC→professor) | `(sid,seq)` em memória | ±120 s no recebimento ao vivo; a 1ª leitura ao abrir o app pode ser antiga → aceita, com `lastReportAt` vindo do `ts` (servidor) do nó |
 | `health` (PC→professor) | `(sid,seq)` em memória | — (repousa no banco; a idade vem do `ts` do nó) |
 | `ack` | `(sid,seq)` em memória | ±120 s |
@@ -862,7 +867,7 @@ Fila do aluno em `up/{pushId}` (POST; id do servidor). Texto em claro:
 
 | type | payload |
 |---|---|
-| `chat` | `{texto 1..500}` |
+| `chat` | `{texto 1..500, para?, nome?, ano?}` (§3.2) |
 | `unblock_request` | `{site, url ≤500, motivo ≤200, bloqueio:"regra"\|"prova"}` |
 | `raise_hand` | `{}` |
 
@@ -950,6 +955,43 @@ por fundador, professores liberados e monitoras), e o app do professor grava a
   trocar a chave (fundador regrava `monitorKey`, professores regravam `mon/pub`)
   invalida a cópia que ela guardou.
 
+### 3.2 Chat do aluno com escolha de quem recebe (Celita OS ≥ 1.41.0, app 0.35.0)
+
+O aluno só escreve depois de dizer quem é (nome e ano, 1º a 9º) e escolhe
+para quem vai a mensagem, entre os professores e as monitoras que já abriram o
+app.
+
+- **Equipe** em `/school/equipe/{uid}` = `{nome 1..60, papel:
+  "professor"|"monitora", ek, visto}`: cada um grava só a própria entrada, ao
+  abrir o app e a cada 5 min com ele aberto (`visto` = serverTimestamp). `ek`
+  é a chave do e-mail (a mesma de `/school/members`) e precisa ser a do token;
+  `papel` precisa casar com a liberação (MEMBRO ou fundador = professor;
+  monitora em `/school/monitores`). O fundador apaga qualquer entrada: tirar
+  alguém de `members` ou `monitores` apaga as entradas com aquele `ek`.
+- O PC lê a equipe (rules: PC listado em `/school/devices` cujo
+  `/device_uids/{auth.uid}` aponta para ele e cuja `meta/uid` é o `auth.uid`)
+  a cada 60 s com a janela aberta. A janela recebe só `{id, nome, papel,
+  online}` (online = `visto` há menos de 10 min), com quem está online
+  primeiro; nunca o e-mail. Monitoras só entram na lista com `mon/pub` válida.
+- **Quem escreve:** `set_aluno` em `state/aluno` (`{rev, nome ≤60, ano
+  1..9}`), gravado pelo app ao ligar o aluno a um PC na chamada (o ano é o da
+  turma), apagado (nome vazio) ao tirar o aluno do PC e no fim da aula. Com ele,
+  a janela não pergunta e o aluno não troca. Sem ele, a janela pede nome (≥ 2
+  caracteres) e ano, guardados no agente só para aquela sessão.
+- **Mensagem:** `chat` no `up/` com `{texto, para: uid da equipe, nome,
+  ano}`. Todo professor continua vendo a conversa; só quem está em `para`
+  recebe notificação (ao vivo e push). Quem não recebe a do push decide pelo
+  uid que o celular guardou ao registrar o push.
+- **Para monitora:** o PC grava também o mesmo envelope, selado com a chave do
+  canal da monitora (§3.1), em `mon/up` (≤ 20 itens e 2 h, poda do PC). Todas
+  as monitoras veem; só a escolhida conta como não lida. Ela responde com
+  `chat_message` pela `mon/cmd` (só `texto` e `de`).
+- **Foto:** cada mensagem enviada tira uma foto da câmera, guardada no arquivo
+  (§7.3) com `motivo: "chat"` e o `mid` da mensagem no cabeçalho, para
+  auditoria de quem escreveu. Nenhum app a mostra no chat, e ela não entra na
+  galeria de entradas. Sem câmera ou PC fora da escola, a mensagem vai sem
+  foto.
+
 ## 4. Security Rules (resumo normativo)
 
 Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
@@ -973,6 +1015,14 @@ Arquivo canônico: `firebase/database.rules.json` (espelhado nos dois repos).
 - `up` — o device cria filhos (string < 4096; o nó precisa ter filhos); o
   professor vinculado ou MEMBRO pode apenas apagar filhos.
 - `state` aceita também `lock`, `exam`, `monitor`.
+- `/school/equipe/{uid}` (§3.2) — `.read` = MEMBRO, monitora ou PC da escola
+  (`device_uids` + roster + `meta/uid`); cada um grava a própria entrada (`uid
+  === auth.uid`, `ek` do token, papel que tem, `visto <= now + 2 min`, nada
+  além dos 4 campos); o fundador só apaga.
+- `state/aluno` — mesma regra do resto do `state` (professor vinculado ou
+  MEMBRO); a monitora não grava.
+- `mon/up/{pushId}` — o PC grava (string < 4096); a monitora lê (pelo `mon`) e
+  só apaga.
 - `/school/monitores/{email}` — só o fundador grava; professores liberados
   leem a lista; cada monitora lê a própria entrada. `/school/monitorKey` — só
   o fundador grava; leem fundador, professores liberados e monitoras.
@@ -1279,8 +1329,9 @@ dos Chromebooks (ChromeOS) não participa.
 ```
 objeto    = nonce(12) || AES-256-GCM(key, nonce, plaintext)           (sem AAD)
 plaintext = utf8(json_header) || 0x0A || jpeg_bytes
-json_header = {"v":1,"type":"archived_photo","ts":<ms>,"motivo":"login"|"periodica"|"bloqueado"|"alerta",
-               "user":"<login da conta>","login":<ms da entrada na conta>,"url":"<só em bloqueado/alerta>"}
+json_header = {"v":1,"type":"archived_photo","ts":<ms>,"motivo":"login"|"periodica"|"bloqueado"|"alerta"|"chat",
+               "user":"<login da conta>","login":<ms da entrada na conta>,"url":"<só em bloqueado/alerta>",
+               "mid":"<só em chat: o mid da mensagem do aluno (§3.2)>"}
 ```
 
 JSON compacto (sem espaços, UTF-8): o primeiro `0x0A` separa. Abrir
@@ -1489,6 +1540,14 @@ pacote do Celita, em qualquer ordem.
 4. Internet e páginas (pacote seguinte ao 1.31.1, com a extensão 0.8.0 dentro):
    sem mudança de rules nem de app; o registro só ganha campos. A extensão 0.8.0
    na Web Store não muda nada no Chromebook (lá não há agente).
+
+### Chat com escolha de quem recebe (app 0.35.0, Celita 1.41.0)
+
+1. Rules com `/school/equipe`, `state/aluno` e `mon/up` (deploy).
+2. APK 0.35.0: professores e monitoras abrem o app uma vez para entrar na
+   equipe; o professor marca o ano de cada turma.
+3. Celita 1.41.0: a janela do chat pede nome e ano e mostra a equipe. Antes do
+   passo 2 a lista fica vazia e o aluno vê "Nenhum professor disponível agora".
 
 ### Histórico para a monitora (app 0.34.0, Celita 1.41.0)
 
